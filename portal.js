@@ -1,10 +1,13 @@
 import { connectPortal, createUserWithEmailAndPassword, signInWithEmailAndPassword, sendPasswordResetEmail, signOut, onAuthStateChanged, updateProfile, ref, get, set, update, push, onValue, serverTimestamp, query, orderByChild, limitToLast } from "./firebase-client.mjs";
 import { safe, text, monthKey, calendarDays, availabilitySummary, sessionCandidates, sessionLabel, validTimeRange } from "./beta-core.mjs";
+import { isPortrait, portraitMarkup, preparePortrait } from "./portraits.mjs";
+import { normalizeColor, readableColor, speakerColors, messageSpeaker } from "./chat-colors.mjs";
 
 const $ = id => document.getElementById(id);
 let auth, db, user, profile = {}, characters = {}, campaignId = "", meta = {}, members = {}, session = null, votes = {};
 let register = false, pending = false, editCharacterId = "", campaignIds = [], authStops = [], campaignStops = [], noticeTimer, voteDirty = false;
 let campaignSummaries = {}, allAvailability = {}, chatMessages = {}, editingMessageId = "", firstChatRender = true;
+let portraitDraft = "", portraitProcessing = false, portraitVersion = 0, chatColorDirty = false, characterSelectionDirty = false;
 const summaryStops = new Map(), savingDays = new Set(), candidateDrafts = new Map();
 let month = new Date(new Date().getFullYear(), new Date().getMonth(), 1, 12), selectedDay = "";
 const path = (...parts) => ref(db, ["beta", ...parts].join("/"));
@@ -16,6 +19,10 @@ const dateKey = () => `${monthKey(month)}-${selectedDay}`;
 const statusNames = { yes: "Můžu", maybe: "Možná", no: "Nemůžu", unknown: "Nevyplněno" };
 const formattedDate = (date, options = { dateStyle: "long" }) => new Intl.DateTimeFormat("cs-CZ", { ...options, timeZone: "UTC" }).format(new Date(`${date}T12:00:00Z`));
 const pragueToday = () => new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Prague", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+let calendarToday = pragueToday();
+function refreshCalendarDate() { const today = pragueToday(); if (today !== calendarToday) { calendarToday = today; if (campaignId) renderCalendar(); } }
+setInterval(refreshCalendarDate, 30000);
+document.addEventListener("visibilitychange", () => { if (!document.hidden) refreshCalendarDate(); });
 function notify(message, good = false) {
   $("notice").textContent = message; $("notice").hidden = false; $("notice").style.background = good ? "#205c3d" : "#743c12";
   clearTimeout(noticeTimer); noticeTimer = setTimeout(() => $("notice").hidden = true, 7000);
@@ -39,6 +46,7 @@ function reset() {
   summaryStops.forEach(stops => stops.forEach(stop => stop())); summaryStops.clear();
   profile = {}; characters = {}; campaignId = ""; meta = {}; members = {}; votes = {}; allAvailability = {}; session = null; campaignIds = []; campaignSummaries = {}; selectedDay = "";
   chatMessages = {}; cancelMessageEdit(); candidateDrafts.clear(); savingDays.clear();
+  portraitDraft = ""; portraitProcessing = false; portraitVersion++; chatColorDirty = false; characterSelectionDirty = false;
   $("campaignView").hidden = true; $("welcome").hidden = false;
   $("campaignList").replaceChildren(); $("characters").replaceChildren();
   document.querySelectorAll("dialog[open]").forEach(d => d.close());
@@ -74,7 +82,7 @@ function renderCharacters() {
     const b = document.createElement("button"); b.className = "character-button";
     b.dataset.characterId = id;
     const campaigns = campaignIds.map(c => campaignSummaries[c]).filter(c => c?.member?.characterId === id && c.meta);
-    b.innerHTML = `<strong>${safe(character.name)}</strong><small>${safe(character.className || character.species || "Postava")} · úroveň ${character.level}</small><span class="character-campaigns"><span class="sidebar-caption">Kampaně</span>${campaigns.length ? campaigns.map(c => `<span class="campaign-tag">${safe(c.meta.name)}</span>`).join("") : '<span class="sidebar-unassigned">Zatím bez kampaně</span>'}</span>`;
+    b.innerHTML = `<span class="sidebar-item-heading">${portraitMarkup(character.portrait, character.name)}<span><strong>${safe(character.name)}</strong><small>${safe(character.className || character.species || "Postava")} · úroveň ${character.level}</small></span></span><span class="character-campaigns"><span class="sidebar-caption">Kampaně</span>${campaigns.length ? campaigns.map(c => `<span class="campaign-tag">${safe(c.meta.name)}</span>`).join("") : '<span class="sidebar-unassigned">Zatím bez kampaně</span>'}</span>`;
     b.onclick = () => editCharacter(id); container.append(b);
   }
   if (!Object.keys(characters).length) container.innerHTML = '<p class="empty">Zatím nemáš žádnou postavu.</p>';
@@ -82,29 +90,68 @@ function renderCharacters() {
 }
 function renderCharacterSelects() {
   const options = Object.entries(characters).map(([id, c]) => `<option value="${safe(id)}">${safe(c.name)}</option>`).join("");
+  const joining = $("joinCharacter").value;
   $("joinCharacter").innerHTML = options || '<option value="">Nejprve vytvoř postavu</option>';
-  const select = $("campaignCharacter"), focused = document.activeElement === select, old = select.value;
+  if (characters[joining]) $("joinCharacter").value = joining;
+  const select = $("campaignCharacter"), old = select.value;
   select.innerHTML = '<option value="">Bez postavy (DM)</option>' + options;
-  select.value = focused ? old : members[user?.uid]?.characterId || "";
+  select.value = characterSelectionDirty ? old : members[user?.uid]?.characterId || "";
 }
+$("campaignCharacter").onchange = () => characterSelectionDirty = true;
 function editCharacter(id = "") {
   editCharacterId = id; const c = characters[id] || {};
+  portraitVersion++; portraitProcessing = false; portraitDraft = isPortrait(c.portrait) ? c.portrait : "";
+  $("characterPortrait").value = ""; $("portraitStatus").textContent = ""; $("characterSave").disabled = false;
   $("characterFormTitle").textContent = id ? "Upravit postavu" : "Nová postava";
   $("characterName").value = c.name || ""; $("characterSpecies").value = c.species || ""; $("characterClass").value = c.className || ""; $("characterLevel").value = c.level || 1; $("characterNotes").value = c.notes || "";
+  renderPortraitPreview();
   $("characterDialog").showModal();
 }
 $("newCharacter").onclick = () => editCharacter();
+function renderPortraitPreview() {
+  $("portraitPreview").innerHTML = portraitMarkup(portraitDraft, $("characterName").value || "Postava", "avatar avatar-preview");
+  $("removePortrait").hidden = !portraitDraft;
+}
+$("characterName").oninput = renderPortraitPreview;
+$("characterPortrait").onchange = async () => {
+  const file = $("characterPortrait").files[0]; if (!file) return;
+  const version = ++portraitVersion; portraitProcessing = true; $("characterSave").disabled = true; $("portraitStatus").textContent = "Připravuji obrázek…";
+  try {
+    const portrait = await preparePortrait(file);
+    if (version !== portraitVersion || !$("characterDialog").open) return;
+    portraitDraft = portrait; renderPortraitPreview(); $("portraitStatus").textContent = "Obrázek je připravený. Uloží se s postavou.";
+  } catch (error) { if (version === portraitVersion) { $("portraitStatus").textContent = error.message; $("characterPortrait").value = ""; } }
+  finally { if (version === portraitVersion) { portraitProcessing = false; $("characterSave").disabled = false; } }
+};
+$("removePortrait").onclick = () => { portraitVersion++; portraitProcessing = false; portraitDraft = ""; $("characterPortrait").value = ""; $("characterSave").disabled = false; renderPortraitPreview(); $("portraitStatus").textContent = "Obrázek se odstraní po uložení postavy."; };
+$("characterDialog").onclose = () => { portraitVersion++; portraitProcessing = false; portraitDraft = ""; $("characterPortrait").value = ""; };
+async function saveCharacterEverywhere(id, character) {
+  const uid = user.uid, index = (await get(path("myCampaigns", uid))).val() || {};
+  const memberships = await Promise.all(Object.keys(index).map(async campaign => ({ campaign, member: (await get(path("campaigns", campaign, "members", uid))).val() })));
+  const changes = { [`beta/characters/${uid}/${id}`]: character };
+  for (const { campaign, member } of memberships) if (member?.characterId === id) {
+    const prefix = `beta/campaigns/${campaign}/members/${uid}`;
+    changes[`${prefix}/characterName`] = character.name;
+    changes[`${prefix}/characterPortrait`] = character.portrait || null;
+    changes[`${prefix}/chatColor`] = character.chatColor || null;
+  }
+  await update(ref(db), changes);
+}
 $("characterForm").onsubmit = event => { event.preventDefault(); run(async () => {
+  if (portraitProcessing) throw new Error("Počkej na dokončení přípravy obrázku.");
   const id = editCharacterId || push(path("characters", user.uid)).key, level = Number($("characterLevel").value);
   if (!Number.isInteger(level) || level < 1 || level > 20) throw new Error("Úroveň musí být od 1 do 20.");
-  await set(path("characters", user.uid, id), { name: text($("characterName").value), species: $("characterSpecies").value.trim(), className: $("characterClass").value.trim(), level, notes: $("characterNotes").value.trim(), updatedAt: serverTimestamp() });
+  const next = { name: text($("characterName").value), species: $("characterSpecies").value.trim(), className: $("characterClass").value.trim(), level, notes: $("characterNotes").value.trim(), updatedAt: serverTimestamp() };
+  if (isPortrait(portraitDraft)) next.portrait = portraitDraft;
+  if (normalizeColor(characters[id]?.chatColor)) next.chatColor = characters[id].chatColor;
+  await saveCharacterEverywhere(id, next);
   $("characterDialog").close(); notify("Postava byla uložena.", true);
 }); };
 async function digest(value) { return [...new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value)))].map(v => v.toString(16).padStart(2, "0")).join(""); }
 function invitationCode() { return [...crypto.getRandomValues(new Uint8Array(16))].map(v => v.toString(16).padStart(2, "0")).join(""); }
 function membership(characterId = "", joinedAt = serverTimestamp(), code = meta.inviteCode) {
   const c = characters[characterId];
-  return { name: displayName(), characterId, characterName: c?.name || "", joinedAt, inviteProof: code };
+  return { name: displayName(), characterId, characterName: c?.name || "", joinedAt, inviteProof: code, ...(isPortrait(c?.portrait) ? { characterPortrait: c.portrait } : {}), ...(normalizeColor(c?.chatColor) ? { chatColor: c.chatColor } : {}) };
 }
 async function syncRoomPlayer(id, member, code) {
   const old = (await get(ref(db, `roomsV2/${id}/players/${user.uid}`))).val();
@@ -159,7 +206,7 @@ function renderCampaignList() {
     const item = campaignSummaries[id] || {}, characterName = characters[item.member?.characterId]?.name || item.member?.characterName;
     const b = document.createElement("button"); b.className = `campaign-button${id === campaignId ? " selected" : ""}`; b.dataset.campaignId = id;
     if (id === campaignId) b.setAttribute("aria-current", "true");
-    b.innerHTML = `<strong>${safe(item.meta?.name || "Načítám kampaň…")}</strong><small>Postava: ${safe(characterName || "bez postavy")}</small>${item.meta?.dmId === user?.uid ? '<span class="sidebar-role">Dungeon Master</span>' : ""}`;
+    b.innerHTML = `<span class="sidebar-item-heading">${portraitMarkup(characters[item.member?.characterId]?.portrait || item.member?.characterPortrait, characterName || "DM")}<span><strong>${safe(item.meta?.name || "Načítám kampaň…")}</strong><small>Postava: ${safe(characterName || "bez postavy")}</small>${item.meta?.dmId === user?.uid ? '<span class="sidebar-role">Dungeon Master</span>' : ""}</span></span>`;
     b.onclick = () => run(() => openCampaign(id)); container.append(b);
   }
   if (!campaignIds.length) container.innerHTML = '<p class="empty">Založ kampaň nebo se připoj pozvánkou.</p>';
@@ -168,12 +215,13 @@ async function openCampaign(id) {
   const own = (await get(path("campaigns", id, "members", user.uid))).val();
   if (!own) throw new Error("Nejsi členem této kampaně.");
   stopCampaign(); campaignId = id; meta = {}; members = {}; votes = {}; allAvailability = {}; session = null; voteDirty = false; selectedDay = "";
+  chatColorDirty = false; characterSelectionDirty = false;
   chatMessages = {}; firstChatRender = true; cancelMessageEdit(); candidateDrafts.clear(); $("messages").innerHTML = '<p class="empty">Načítám zprávy…</p>'; showTab("chat");
   localStorage.setItem(`kf_beta_campaign:${user.uid}`, id);
   $("welcome").hidden = true; $("campaignView").hidden = false;
   renderCampaignList();
   listen(campaignPath("meta"), s => { meta = s.val() || {}; renderCampaign(); renderCalendar(); }, campaignStops);
-  listen(campaignPath("members"), s => { members = s.val() || {}; renderCampaign(); renderCalendar(); }, campaignStops);
+  listen(campaignPath("members"), s => { members = s.val() || {}; renderCampaign(); renderCalendar(); renderMessages(); }, campaignStops);
   listen(campaignPath("session"), s => { session = s.val(); renderSession(); renderCalendar(); }, campaignStops);
   listen(query(campaignPath("chat"), orderByChild("ts"), limitToLast(100)), s => { chatMessages = s.val() || {}; renderMessages(); }, campaignStops);
   listen(campaignPath("availability"), s => { allAvailability = s.val() || {}; votes = allAvailability[monthKey(month)] || {}; renderCalendar(); if (!voteDirty) fillVoteForm(); }, campaignStops);
@@ -183,19 +231,41 @@ function renderCampaign() {
   $("roleLabel").textContent = [isOwner() ? "Správce kampaně" : "", isDM() ? "Dungeon Master" : "Hráč"].filter(Boolean).join(" · ");
   $("ownerControls").hidden = !isOwner(); $("sessionControls").hidden = !isDM();
   $("inviteCode").value = meta.inviteCode || "";
-  $("members").innerHTML = Object.entries(members).map(([id, m]) => `<div class="member"><div><strong>${safe(m.name)}</strong><small>${safe(m.characterName || "Bez postavy")}</small></div><span class="role">${id === meta.dmId ? "DM" : "Hráč"}${id === user.uid ? " · ty" : ""}</span></div>`).join("");
+  const colors = speakerColors(members);
+  $("members").innerHTML = Object.entries(members).map(([id, m]) => `<div class="member"><div class="member-identity">${portraitMarkup(m.characterPortrait, m.characterName || m.name)}<div><strong style="color:${colors[id]}">${safe(m.name)}</strong><small>${safe(m.characterName || "Bez postavy")}</small></div></div><span class="role">${id === meta.dmId ? "DM" : "Hráč"}${id === user.uid ? " · ty" : ""}</span></div>`).join("");
   $("dmSelect").innerHTML = Object.entries(members).map(([id, m]) => `<option value="${safe(id)}">${safe(m.name)}</option>`).join(""); $("dmSelect").value = meta.dmId || "";
-  renderCharacterSelects(); renderSession();
+  renderCharacterSelects(); renderSession(); renderChatColorSettings();
 }
 function renderSession() {
   $("nextSession").textContent = sessionLabel(session);
   $("sessionNote").textContent = session?.note || "Dostupnost družiny najdeš v kalendáři.";
 }
+function renderChatColorSettings() {
+  const own = members[user?.uid]; $("chatColorForm").hidden = !own; if (!own) return;
+  if (!chatColorDirty) $("chatColor").value = speakerColors(members)[user.uid];
+  $("chatColorPreview").textContent = `${own.name} · ${own.characterName || (isDM() ? "Dungeon Master" : "Bez postavy")}`;
+  $("chatColorPreview").style.color = readableColor($("chatColor").value);
+}
+$("chatColor").oninput = () => { chatColorDirty = true; renderChatColorSettings(); };
+async function changeChatColor(color) {
+  const own = members[user.uid], targetCampaign = campaignId; if (!own) return;
+  if (own.characterId) {
+    const character = (await get(path("characters", user.uid, own.characterId))).val();
+    if (!character) throw new Error("Postavu se nepodařilo najít.");
+    if (color) character.chatColor = color; else delete character.chatColor;
+    character.updatedAt = serverTimestamp(); await saveCharacterEverywhere(own.characterId, character);
+  } else await set(path("campaigns", targetCampaign, "members", user.uid, "chatColor"), color);
+  if (targetCampaign === campaignId) { chatColorDirty = false; renderChatColorSettings(); }
+  notify(color ? "Barva postavy byla uložena." : "Postava znovu používá automatickou barvu.", true);
+}
+$("chatColorForm").onsubmit = event => { event.preventDefault(); run(() => changeChatColor(readableColor($("chatColor").value))); };
+$("resetChatColor").onclick = () => run(() => changeChatColor(null));
 $("selectCharacterForm").onsubmit = e => { e.preventDefault(); run(async () => {
-  const characterId = $("campaignCharacter").value;
+  const characterId = $("campaignCharacter").value, targetCampaign = campaignId;
   if (!characterId && !isDM()) throw new Error("Vyber svoji postavu.");
   const old = members[user.uid], m = membership(characterId, old.joinedAt), player = await syncRoomPlayer(campaignId, m, meta.inviteCode);
   await update(ref(db), { [`beta/campaigns/${campaignId}/members/${user.uid}`]: m, [`roomsV2/${campaignId}/players/${user.uid}`]: player });
+  if (targetCampaign === campaignId) { characterSelectionDirty = false; renderCharacterSelects(); }
   notify("Postava pro kampaň byla nastavena.", true);
 }); };
 $("copyInvite").onclick = () => run(async () => { try { await navigator.clipboard.writeText(meta.inviteCode); notify("Pozvánkový kód zkopírován.", true); } catch { $("inviteCode").select(); notify("Kód můžeš zkopírovat z označeného pole."); } });
@@ -230,20 +300,22 @@ function renderCalendar() {
   const days = calendarDays(month.getFullYear(), month.getMonth()), summaries = days.map(d => availabilitySummary(members, meta.dmId, votes[d.day]));
   const best = Math.max(0, ...summaries.filter(s => s.dm === "yes").map(s => s.yes));
   days.forEach((d, index) => {
-    const summary = summaries[index], mine = votes[d.day]?.[user?.uid]?.status === "yes", everyone = summary.total > 0 && summary.yes === summary.total && summary.dm === "yes";
+    const summary = summaries[index], mine = votes[d.day]?.[user?.uid]?.status === "yes", everyone = summary.total > 0 && summary.yes === summary.total && summary.dm === "yes", past = `${monthKey(month)}-${d.day}` < pragueToday();
     const b = document.createElement("button"); b.type = "button";
     b.className = ["day", selectedDay === d.day ? "selected" : "", mine ? "mine" : "", everyone ? "everyone" : best > 0 && summary.yes === best && summary.dm === "yes" ? "good" : "", session?.date === `${monthKey(month)}-${d.day}` ? "confirmed" : ""].filter(Boolean).join(" ");
     if (index === 0) b.style.gridColumnStart = d.offset + 1;
     b.dataset.day = d.day; b.setAttribute("aria-pressed", String(mine));
-    b.setAttribute("aria-label", `${d.number}. ${month.getMonth() + 1}.: ${mine ? "můžeš" : "označit dostupnost"}, mohou ${summary.yes} z ${summary.total} hráčů, DM ${statusNames[summary.dm]}`);
+    b.classList.toggle("past", past); b.dataset.history = String(past);
+    b.setAttribute("aria-label", `${d.number}. ${month.getMonth() + 1}.: ${past ? "historie dostupnosti" : mine ? "můžeš" : "označit dostupnost"}, ${summary.yes} z ${summary.total} hráčů, DM ${statusNames[summary.dm]}`);
     b.disabled = savingDays.has(`${campaignId}/${monthKey(month)}/${d.day}`);
     b.innerHTML = `<span class="number">${d.number}<span class="day-check" aria-hidden="true">${mine ? "✓" : ""}</span></span><span class="count">${summary.yes}/${summary.total}</span><small>DM: ${summary.dm === "yes" ? "ano" : summary.dm === "no" ? "ne" : summary.dm === "maybe" ? "možná" : "?"}</small>`;
-    b.onclick = () => toggleAvailability(d.day); container.append(b);
+    b.onclick = () => { if (past) { selectedDay = d.day; voteDirty = false; renderCalendar(); fillVoteForm(); } else toggleAvailability(d.day); }; container.append(b);
   });
   renderAvailabilityLinks(); renderDay(); renderSessionCandidates();
 }
 async function toggleAvailability(day) {
   if (!campaignId || !members[user?.uid]) return;
+  if (`${monthKey(month)}-${day}` < pragueToday()) { selectedDay = day; renderCalendar(); return; }
   const id = campaignId, uid = user.uid, selectedMonth = monthKey(month), key = `${id}/${selectedMonth}/${day}`;
   if (savingDays.has(key)) return;
   const old = votes[day]?.[uid], remove = old?.status === "yes";
@@ -261,16 +333,19 @@ function renderAvailabilityLinks() {
   const selected = Object.entries(votes).filter(([, day]) => day[user?.uid]?.status === "yes").sort(([a], [b]) => a.localeCompare(b));
   for (const [day, dayVotes] of selected) {
     const vote = dayVotes[user.uid], b = document.createElement("button"); b.type = "button"; b.className = `availability-link secondary${selectedDay === day ? " selected" : ""}`; b.dataset.availabilityDay = day;
-    b.innerHTML = `<strong>${safe(formattedDate(`${monthKey(month)}-${day}`, { weekday: "short", day: "numeric", month: "numeric" }))}</strong><small>${safe([vote.from ? `od ${vote.from}` : "", vote.until ? `do ${vote.until}` : "", vote.note].filter(Boolean).join(" · ") || "Doplnit čas nebo poznámku")}</small>`;
+    const past = `${monthKey(month)}-${day}` < pragueToday();
+    b.innerHTML = `<strong>${safe(formattedDate(`${monthKey(month)}-${day}`, { weekday: "short", day: "numeric", month: "numeric" }))}</strong><small>${safe([past ? "Historie" : "", vote.from ? `od ${vote.from}` : "", vote.until ? `do ${vote.until}` : "", vote.note].filter(Boolean).join(" · ") || "Doplnit čas nebo poznámku")}</small>`;
     b.onclick = () => { selectedDay = day; voteDirty = false; renderCalendar(); fillVoteForm(); $("availabilityDetail").scrollIntoView({ behavior: "smooth", block: "nearest" }); };
     container.append(b);
   }
   if (!selected.length) container.innerHTML = '<p class="empty">Označ dny v kalendáři. Tady pak otevřeš jejich podrobnosti.</p>';
 }
 function renderDay() {
-  const visible = selectedDay && votes[selectedDay]?.[user?.uid]?.status === "yes";
+  const past = selectedDay && dateKey() < pragueToday(), visible = selectedDay && (past || votes[selectedDay]?.[user?.uid]?.status === "yes");
   $("availabilityDetail").hidden = !visible;
   if (!visible) return;
+  $("availabilityForm").hidden = !!past;
+  $("availabilityHelp").textContent = past ? "Historie dostupnosti. Minulé termíny už nelze upravovat." : "Na tento den máš označeno „můžu“. Časy i poznámka jsou volitelné.";
   $("selectedDateTitle").textContent = formattedDate(dateKey());
   $("dayMembers").innerHTML = memberVotes(votes[selectedDay]);
 }
@@ -286,6 +361,7 @@ function fillVoteForm() {
 }
 $("availabilityForm").oninput = () => voteDirty = true;
 $("availabilityForm").onsubmit = e => { e.preventDefault(); run(async () => {
+  if (selectedDay && dateKey() < pragueToday()) throw new Error("Minulé termíny jsou jen pro prohlížení historie.");
   if (!selectedDay || votes[selectedDay]?.[user.uid]?.status !== "yes") throw new Error("Nejprve označ den, kdy můžeš.");
   const from = $("availableFrom").value, until = $("availableUntil").value;
   if (!validTimeRange(from, until)) throw new Error("Čas „do“ musí následovat po čase „od“. Pro sezení přes půlnoc doplň poznámku.");
@@ -332,7 +408,11 @@ function renderMessages() {
   const container = $("messages"), atBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 60;
   const rows = Object.entries(chatMessages).sort((a, b) => a[1].ts - b[1].ts || a[0].localeCompare(b[0]));
   const time = stamp => new Intl.DateTimeFormat("cs-CZ", { day: "numeric", month: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Europe/Prague" }).format(new Date(stamp));
-  container.innerHTML = rows.map(([id, m]) => `<article class="message${id === editingMessageId ? " editing" : ""}" data-message-id="${safe(id)}"><div class="byline"><strong>${safe(m.name)}</strong><span class="message-meta"><time>${safe(time(m.ts))}</time>${m.editedAt ? `<span class="edited" title="${safe(time(m.editedAt))}">upraveno</span>` : ""}${m.uid === user?.uid ? `<button type="button" class="edit-message link-button" data-edit-message="${safe(id)}">Upravit</button>` : ""}</span></div><p>${safe(m.body)}</p></article>`).join("") || '<p class="empty">Zatím tu nejsou žádné zprávy.</p>';
+  const colors = speakerColors(members);
+  container.innerHTML = rows.map(([id, m]) => {
+    const speaker = messageSpeaker(m, members, colors, meta.dmId);
+    return `<article class="message${id === editingMessageId ? " editing" : ""}" data-message-id="${safe(id)}" style="--speaker-color:${speaker.color}"><div class="byline"><span class="message-author">${portraitMarkup(speaker.portrait, speaker.characterName, "avatar avatar-chat")}<span><strong>${safe(speaker.name)}</strong><span class="message-character">${safe(speaker.characterName)}</span></span></span><span class="message-meta"><time>${safe(time(m.ts))}</time>${m.editedAt ? `<span class="edited" title="${safe(time(m.editedAt))}">upraveno</span>` : ""}${m.uid === user?.uid ? `<button type="button" class="edit-message link-button" data-edit-message="${safe(id)}">Upravit</button>` : ""}</span></div><p>${safe(m.body)}</p></article>`;
+  }).join("") || '<p class="empty">Zatím tu nejsou žádné zprávy.</p>';
   if (atBottom || firstChatRender) requestAnimationFrame(() => container.scrollTop = container.scrollHeight);
   firstChatRender = false;
 }
@@ -356,7 +436,10 @@ $("chatForm").onsubmit = e => { e.preventDefault(); run(async () => {
   if (editing) {
     if (chatMessages[editing]?.uid !== user.uid) throw new Error("Upravit můžeš jen svoji zprávu.");
     await update(campaignPath("chat", editing), { body, editedAt: serverTimestamp() });
-  } else await set(push(campaignPath("chat")), { uid: user.uid, name: members[user.uid].name, body, ts: serverTimestamp() });
+  } else {
+    const own = members[user.uid];
+    await set(push(campaignPath("chat")), { uid: user.uid, name: own.name, body, ts: serverTimestamp(), characterId: own.characterId || "", characterName: own.characterName || "", chatColor: speakerColors(members)[user.uid] });
+  }
   cancelMessageEdit(!!editing); renderMessages(); $("message").focus();
 }); };
 

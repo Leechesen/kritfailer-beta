@@ -27,7 +27,7 @@ const executablePath = process.env.KRITFAILER_CHROMIUM_EXECUTABLE;
 const browser = await chromium.launch({ headless: true, ...(executablePath ? { executablePath } : {}) });
 const errors = [];
 async function pageFor(url = origin) {
-  const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
+  const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, timezoneId: "Europe/Prague" });
   await context.route("**/*", route => {
     const url = new URL(route.request().url());
     if (url.origin === "https://www.gstatic.com" && url.pathname.startsWith("/firebasejs/10.7.1/")) return route.fulfill({ path: path.join(root, "node_modules/firebase", url.pathname.split("/").at(-1)), contentType: "text/javascript" });
@@ -41,8 +41,10 @@ async function pageFor(url = origin) {
 async function signup(page, name, email) {
   await page.locator("#registerTab").click(); await page.locator("#nickname").fill(name); await page.locator("#email").fill(email); await page.locator("#password").fill("BetaTest-2026!"); await page.locator("#authSubmit").click(); await page.locator("#portal").waitFor({ state: "visible" });
 }
-async function character(page, name) {
-  await page.locator("#newCharacter").click(); await page.locator("#characterName").fill(name); await page.locator("#characterClass").fill("Bojovník"); await page.locator("#characterForm button[type=submit], #characterForm > button").click(); await page.locator("#characterDialog").waitFor({ state: "hidden" });
+async function character(page, name, portrait) {
+  await page.locator("#newCharacter").click(); await page.locator("#characterName").fill(name); await page.locator("#characterClass").fill("Bojovník");
+  if (portrait) { await page.locator("#characterPortrait").setInputFiles(portrait); await page.waitForFunction(() => !!document.querySelector("#portraitPreview img") && !document.querySelector("#characterSave").disabled); }
+  await page.locator("#characterSave").click(); await page.locator("#characterDialog").waitFor({ state: "hidden" });
 }
 async function waitText(page, selector, text) { await page.waitForFunction(({ selector, text }) => document.querySelector(selector)?.textContent.includes(text), { selector, text }); }
 async function loginToken(email) {
@@ -53,10 +55,16 @@ try {
   const suffix = Date.now(), dm = await pageFor(), p1 = await pageFor(), outsider = await pageFor();
   const emails = { dm: `dm-${suffix}@test.local`, p1: `player-${suffix}@test.local`, outsider: `outsider-${suffix}@test.local` };
   await signup(dm, "Ondra DM", emails.dm); await signup(p1, "Péťa", emails.p1); await signup(outsider, "Návštěvník", emails.outsider);
-  await character(p1, "Hea"); await character(p1, "Vareth");
+  async function imageFile(color) {
+    const data = await p1.evaluate(color => { const canvas = document.createElement("canvas"); canvas.width = 1400; canvas.height = 900; const context = canvas.getContext("2d"); context.fillStyle = color; context.fillRect(0, 0, 1400, 900); context.fillStyle = "#f1d7b5"; context.beginPath(); context.arc(700, 360, 170, 0, Math.PI * 2); context.fill(); context.fillStyle = "#24354d"; context.fillRect(450, 540, 500, 360); return canvas.toDataURL("image/png").split(",")[1]; }, color);
+    return { name: "portrait.png", mimeType: "image/png", buffer: Buffer.from(data, "base64") };
+  }
+  await character(p1, "Hea", await imageFile("#285d67")); await character(p1, "Vareth");
   const dmAuth = await loginToken(emails.dm), p1Auth = await loginToken(emails.p1), outsiderAuth = await loginToken(emails.outsider);
   const characterData = (await api(`beta/characters/${p1Auth.localId}`)).data;
   const hea = Object.keys(characterData).find(id => characterData[id].name === "Hea"), vareth = Object.keys(characterData).find(id => characterData[id].name === "Vareth");
+  const initialPortrait = characterData[hea].portrait; assert.ok(initialPortrait.startsWith("data:image/")); assert.ok(initialPortrait.length <= 90000);
+  assert.equal(await p1.locator(`[data-character-id="${hea}"] img`).count(), 1); assert.equal(await p1.locator(`[data-character-id="${vareth}"] img`).count(), 0);
   async function campaign(name) {
     await dm.locator("#newCampaign").click(); await dm.locator("#newCampaignName").fill(name); await dm.locator("#campaignForm > button").click();
     await waitText(dm, "#campaignName", name); await dm.waitForFunction(() => document.querySelector("#inviteCode").value.length === 32);
@@ -73,9 +81,23 @@ try {
   const second = await campaign("Stíny severu"); await join(second, hea);
   await waitText(p1, `[data-character-id="${hea}"]`, "Stíny severu"); await waitText(p1, `[data-character-id="${hea}"]`, "Testovací Kroniky");
   const mirror = await p1.context().newPage(); await mirror.goto(origin); await mirror.locator("#campaignView").waitFor({ state: "visible" });
+  await p1.locator(`[data-character-id="${hea}"]`).click();
+  await p1.locator("#characterPortrait").setInputFiles({ name: "bad.svg", mimeType: "image/svg+xml", buffer: Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"/>') });
+  await waitText(p1, "#portraitStatus", "Vyber obrázek"); assert.equal(await p1.locator("#portraitPreview img").getAttribute("src"), initialPortrait);
+  await p1.locator("#characterPortrait").setInputFiles(await imageFile("#684c91"));
+  await p1.waitForFunction(old => document.querySelector("#portraitPreview img")?.getAttribute("src") !== old && !document.querySelector("#characterSave").disabled, initialPortrait);
+  assert.equal(await p1.locator("#portraitPreview img").evaluate(image => image.naturalWidth), 512);
+  const nextPortrait = await p1.locator("#portraitPreview img").getAttribute("src"); await p1.locator("#characterSave").click(); await p1.locator("#characterDialog").waitFor({ state: "hidden" });
+  await mirror.waitForFunction(({ id, portrait }) => document.querySelector(`[data-character-id="${id}"] img`)?.getAttribute("src") === portrait, { id: hea, portrait: nextPortrait });
+  for (const campaign of [first, second]) assert.equal((await api(`beta/campaigns/${campaign.id}/members/${p1Auth.localId}/characterPortrait`)).data, nextPortrait);
+  assert.equal((await api(`beta/characters/${p1Auth.localId}/${hea}`, "PATCH", { portrait: "data:image/svg+xml;base64,QUJD", updatedAt: { ".sv": "timestamp" } }, p1Auth.idToken)).status, 401);
+  assert.equal((await api(`beta/characters/${p1Auth.localId}/${hea}`, "PATCH", { portrait: "data:image/webp;base64," + "A".repeat(90000), updatedAt: { ".sv": "timestamp" } }, p1Auth.idToken)).status, 401);
+  assert.equal((await api(`beta/campaigns/${first.id}/members/${p1Auth.localId}/characterPortrait`, "PUT", "data:image/webp;base64,QUJD", p1Auth.idToken)).status, 401);
+  assert.equal((await api(`beta/characters/${p1Auth.localId}/${hea}/portrait`, "PUT", nextPortrait, dmAuth.idToken)).status, 401);
   await p1.locator('[data-tab="overview"]').click(); await p1.locator("#campaignCharacter").selectOption(vareth); await p1.locator("#selectCharacterForm > button").click();
   await waitText(mirror, `[data-campaign-id="${second.id}"]`, "Vareth"); await waitText(mirror, `[data-character-id="${vareth}"]`, "Stíny severu");
   assert.equal((await mirror.locator(`[data-character-id="${hea}"]`).textContent()).includes("Stíny severu"), false);
+  assert.equal((await api(`beta/campaigns/${second.id}/members/${p1Auth.localId}/characterPortrait`)).data, null);
   await p1.locator(`[data-campaign-id="${first.id}"]`).click(); await dm.locator(`[data-campaign-id="${first.id}"]`).click();
   await waitText(p1, "#campaignName", "Testovací Kroniky"); await waitText(dm, "#campaignName", "Testovací Kroniky");
   assert.equal(await p1.locator("#chat").isVisible(), true);
@@ -88,10 +110,22 @@ try {
   assert.equal(await p1.locator("#message").inputValue(), "Ahoj družino\n");
   assert.equal(await p1.locator(".message").count(), 0);
   await p1.locator("#message").pressSequentially("Druhy radek <img src=x onerror=alert(1)>"); await p1.locator("#message").press("Enter");
-  await waitText(dm, "#messages", "Druhy radek"); assert.equal(await dm.locator("#messages img").count(), 0);
+  await waitText(dm, "#messages", "Druhy radek"); assert.equal(await dm.locator("#messages img:not(.avatar)").count(), 0);
   assert.equal(await dm.locator(".edit-message").count(), 0);
   const originalMessages = (await api(`beta/campaigns/${id}/chat`)).data, messageId = Object.keys(originalMessages)[0], originalMessage = originalMessages[messageId];
   await dm.locator("#message").fill("Domluvíme další sezení."); await dm.locator("#message").press("Enter"); await waitText(p1, "#messages", "Domluvíme");
+  await waitText(dm, `[data-message-id="${messageId}"] .message-character`, "Hea");
+  assert.equal(await dm.locator(`[data-message-id="${messageId}"] img`).getAttribute("src"), nextPortrait);
+  const automaticColors = await dm.locator(".message").evaluateAll(messages => messages.map(message => message.style.getPropertyValue("--speaker-color")));
+  assert.equal(new Set(automaticColors).size, 2);
+  await p1.locator('[data-tab="overview"]').click(); await p1.locator("#chatColor").evaluate(input => { input.value = "#66dd99"; input.dispatchEvent(new Event("input", { bubbles: true })); }); await p1.locator("#chatColorForm button").first().click();
+  await dm.waitForFunction(id => document.querySelector(`[data-message-id="${id}"]`).style.getPropertyValue("--speaker-color") === "#66DD99", messageId);
+  assert.equal((await api(`beta/characters/${p1Auth.localId}/${hea}/chatColor`)).data, "#66DD99");
+  assert.equal((await api(`beta/campaigns/${id}/members/${p1Auth.localId}/chatColor`, "PUT", "#FF0000", p1Auth.idToken)).status, 401);
+  assert.equal((await api(`beta/campaigns/${id}/members/${p1Auth.localId}/chatColor`, "PUT", "#66DD99", dmAuth.idToken)).status, 401);
+  await p1.locator("#resetChatColor").click();
+  await p1.waitForFunction(() => document.querySelector("#chatColor").value.toUpperCase() !== "#66DD99");
+  await p1.locator('[data-tab="chat"]').click();
   await p1.locator(`[data-message-id="${messageId}"] .edit-message`).click(); await p1.locator("#message").fill("Opravená zpráva\nDruhý řádek"); await p1.locator("#message").press("Enter");
   await waitText(dm, `[data-message-id="${messageId}"]`, "Opravená zpráva");
   assert.equal(await dm.locator(`[data-message-id="${messageId}"] .edited`).count(), 1);
@@ -99,15 +133,43 @@ try {
   assert.equal(edited.ts, originalMessage.ts); assert.equal(edited.uid, p1Auth.localId); assert.ok(edited.editedAt >= edited.ts);
   assert.equal(await dm.locator(".message").first().getAttribute("data-message-id"), messageId);
   const messagePath = `beta/campaigns/${id}/chat/${messageId}`;
-  for (const [patch, token] of [[{ body: "Cizí úprava", editedAt: stamp }, dmAuth.idToken], [{ body: "Cizí úprava", editedAt: stamp }, outsiderAuth.idToken], [{ uid: dmAuth.localId, editedAt: stamp }, p1Auth.idToken], [{ name: "Jiný autor", editedAt: stamp }, p1Auth.idToken], [{ ts: 1, editedAt: stamp }, p1Auth.idToken], [{ body: "Bez razítka" }, p1Auth.idToken]]) {
+  for (const [patch, token] of [[{ body: "Cizí úprava", editedAt: stamp }, dmAuth.idToken], [{ body: "Cizí úprava", editedAt: stamp }, outsiderAuth.idToken], [{ uid: dmAuth.localId, editedAt: stamp }, p1Auth.idToken], [{ name: "Jiný autor", editedAt: stamp }, p1Auth.idToken], [{ ts: 1, editedAt: stamp }, p1Auth.idToken], [{ characterName: "Jiná postava", editedAt: stamp }, p1Auth.idToken], [{ characterId: vareth, editedAt: stamp }, p1Auth.idToken], [{ chatColor: "#000000", editedAt: stamp }, p1Auth.idToken], [{ body: "Bez razítka" }, p1Auth.idToken]]) {
     assert.equal((await api(messagePath, "PATCH", patch, token)).status, 401);
   }
   assert.equal((await api(messagePath, "DELETE", undefined, p1Auth.idToken)).status, 401);
   await p1.locator("#message").fill("Rozpracovaný text"); await p1.locator(`[data-message-id="${messageId}"] .edit-message`).click(); await p1.locator("#message").fill("Zrušená změna"); await p1.locator("#cancelMessageEdit").click();
   assert.equal(await p1.locator("#message").inputValue(), "Rozpracovaný text"); await p1.locator("#message").fill("");
+  await p1.locator('[data-tab="overview"]').click(); await p1.locator("#campaignCharacter").selectOption(vareth); await p1.locator("#selectCharacterForm > button").click(); await p1.locator('[data-tab="chat"]').click();
+  await p1.locator("#message").fill("Zpráva za Varetha"); await p1.locator("#message").press("Enter"); await waitText(dm, "#messages", "Zpráva za Varetha");
+  assert.equal(await dm.locator(".message").last().locator(".message-character").textContent(), "Vareth");
+  assert.equal(await dm.locator(`[data-message-id="${messageId}"] .message-character`).textContent(), "Hea");
+  await p1.locator('[data-tab="overview"]').click(); await p1.locator("#campaignCharacter").selectOption(hea); await p1.locator("#selectCharacterForm > button").click();
+  await p1.waitForFunction(() => !document.body.hasAttribute("aria-busy"));
+  assert.equal((await api(`beta/campaigns/${id}/members/${p1Auth.localId}/characterId`)).data, hea);
+  console.log("PASS compressed portraits, live replacement in every campaign, private upload permissions, distinct chat colors, manual color/reset and immutable character identities");
   await p1.reload(); await p1.locator("#campaignView").waitFor({ state: "visible" }); assert.equal(await p1.locator("#chat").isVisible(), true); await waitText(p1, "#messages", "Opravená zpráva");
   console.log("PASS Enter sends, Ctrl+Enter inserts a line, live author-only edits, edit cancellation, immutable authors/timestamps and persisted chat");
   await dm.locator('[data-tab="calendar"]').click(); await p1.locator('[data-tab="calendar"]').click();
+  const today = await p1.evaluate(() => new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Prague", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date()));
+  const previous = new Date(`${today.slice(0, 7)}-01T12:00:00Z`); previous.setUTCMonth(previous.getUTCMonth() - 1);
+  const pastMonth = previous.toISOString().slice(0, 7), pastVote = { status: "yes", from: "17:00", until: "21:00", note: "Minulé sezení", updatedAt: 1 };
+  await api(`beta/campaigns/${id}/availability/${pastMonth}/14/${p1Auth.localId}`, "PUT", pastVote);
+  await p1.locator("#previousMonth").click(); await p1.locator('[data-availability-day="14"]').waitFor();
+  await p1.locator('[data-day="14"]').click();
+  assert.equal(await p1.locator('[data-day="14"]').getAttribute("data-history"), "true");
+  assert.equal(await p1.locator('[data-day="14"]').getAttribute("aria-pressed"), "true");
+  assert.equal(await p1.locator("#availabilityForm").isVisible(), false);
+  await waitText(p1, "#availabilityHelp", "Historie"); await waitText(p1, "#dayMembers", "Minulé sezení"); await waitText(p1, "#dayMembers", "17:00");
+  await waitText(p1, '[data-availability-day="14"]', "Historie");
+  assert.deepEqual((await api(`beta/campaigns/${id}/availability/${pastMonth}/14/${p1Auth.localId}`)).data, pastVote);
+  await p1.locator('[data-day="15"]').click(); assert.equal(await p1.locator("#availabilityDetail").isVisible(), true); assert.equal(await p1.locator("#availabilityForm").isVisible(), false);
+  assert.equal((await api(`beta/campaigns/${id}/availability/${pastMonth}/15/${p1Auth.localId}`)).data, null);
+  await p1.locator("#nextMonth").click();
+  await p1.locator(`[data-day="${today.slice(-2)}"]`).click(); await p1.waitForFunction(day => document.querySelector(`[data-day="${day}"]`).getAttribute("aria-pressed") === "true", today.slice(-2));
+  assert.equal(await p1.locator("#availabilityForm").isVisible(), true); assert.equal(await p1.locator(`[data-day="${today.slice(-2)}"]`).getAttribute("data-history"), "false");
+  await p1.locator(`[data-day="${today.slice(-2)}"]`).click(); await p1.waitForFunction(day => document.querySelector(`[data-day="${day}"]`).getAttribute("aria-pressed") === "false", today.slice(-2));
+  assert.equal(await dm.locator(".session-candidate").count(), 0);
+  console.log("PASS past availability stays read-only with recorded times/notes, unmarked past dates cannot be added, and today remains editable");
   await dm.locator("#nextMonth").click(); await p1.locator("#nextMonth").click();
   await p1.locator('[data-day="14"]').click(); await p1.waitForFunction(() => document.querySelector('[data-day="14"]').getAttribute("aria-pressed") === "true");
   await p1.locator('[data-availability-day="14"]').waitFor(); assert.equal(await p1.locator("#availabilityDetail").isVisible(), true);
@@ -153,13 +215,22 @@ try {
   assert.equal((await api(`roomsV2/${id}/dm`)).data, p1Auth.localId);
   assert.equal((await api(`beta/campaigns/${id}/meta/dmId`, "PUT", outsiderAuth.localId, p1Auth.idToken)).status, 401);
   assert.equal((await api(`beta/campaigns/${id}/session`, "PUT", { ...badSession, updatedBy: dmAuth.localId }, dmAuth.idToken)).status, 401);
+  await p1.locator(`[data-character-id="${hea}"]`).click(); await p1.locator("#removePortrait").click(); await p1.locator('[data-close="characterDialog"]').click();
+  assert.equal((await api(`beta/characters/${p1Auth.localId}/${hea}/portrait`)).data, nextPortrait);
+  await p1.locator(`[data-character-id="${hea}"]`).click(); await p1.locator("#removePortrait").click(); await p1.locator("#characterSave").click(); await p1.locator("#characterDialog").waitFor({ state: "hidden" });
+  assert.equal((await api(`beta/characters/${p1Auth.localId}/${hea}/portrait`)).data, null); assert.equal((await api(`beta/campaigns/${id}/members/${p1Auth.localId}/characterPortrait`)).data, null);
+  await p1.locator(`[data-character-id="${hea}"]`).click(); await p1.locator("#characterPortrait").setInputFiles(await imageFile("#285d67")); await p1.waitForFunction(() => !!document.querySelector("#portraitPreview img") && !document.querySelector("#characterSave").disabled); await p1.locator("#characterSave").click(); await p1.locator("#characterDialog").waitFor({ state: "hidden" });
   await p1.locator('[data-tab="calendar"]').click(); assert.equal(await p1.locator("#sessionControls").isVisible(), true);
   await fs.mkdir(path.join(root, "screenshots"), { recursive: true });
   await p1.locator("#notice").evaluate(element => element.hidden = true); await p1.screenshot({ path: path.join(root, "screenshots/calendar.png"), fullPage: true });
   await p1.locator('[data-tab="chat"]').click(); await p1.screenshot({ path: path.join(root, "screenshots/chat.png"), fullPage: true });
+  await p1.locator('[data-tab="overview"]').click(); await p1.screenshot({ path: path.join(root, "screenshots/overview.png"), fullPage: true });
   await p1.setViewportSize({ width: 390, height: 844 }); await p1.locator('[data-tab="calendar"]').click();
   assert.equal(await p1.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true); await p1.screenshot({ path: path.join(root, "screenshots/mobile-calendar.png"), fullPage: true });
   await p1.locator('[data-tab="chat"]').click(); assert.equal(await p1.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+  await p1.locator(`[data-character-id="${hea}"]`).click(); assert.equal(await p1.locator("#portraitPreview img").count(), 1);
+  const portraitBounds = await p1.locator("#characterDialog").boundingBox(); assert.ok(portraitBounds.x >= 0 && portraitBounds.x + portraitBounds.width <= 390);
+  await p1.screenshot({ path: path.join(root, "screenshots/mobile-portrait.png"), fullPage: true }); await p1.locator('[data-close="characterDialog"]').click();
   assert.deepEqual(errors, []);
   console.log("PASS transferred DM roles, responsive chat/calendar and no browser runtime errors; only local emulators contacted");
 } finally { await browser.close(); await new Promise(resolve => server.close(resolve)); }

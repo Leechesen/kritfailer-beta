@@ -232,6 +232,12 @@
             },
             "$other": {
               ".validate": false
+            },
+            "portrait": {
+              ".validate": "newData.isString() && newData.val().length <= 90000 && newData.val().matches(/^data:image\\/(webp|jpeg);base64,[A-Za-z0-9+\\/]+={0,2}$/)"
+            },
+            "chatColor": {
+              ".validate": "newData.isString() && newData.val().matches(/^#[0-9a-fA-F]{6}$/)"
             }
           }
         }
@@ -308,7 +314,13 @@
                 ".validate": false
               },
               ".read": "auth != null && auth.token.email != null && auth.uid === $uid",
-              ".write": "auth != null && auth.token.email != null && auth.uid === $uid && newData.exists() && (newData.parent().parent().child('meta').child('ownerId').val() === auth.uid || newData.child('inviteProof').val() === root.child('beta').child('campaigns').child($campaign).child('meta').child('inviteCode').val())"
+              ".write": "auth != null && auth.token.email != null && auth.uid === $uid && newData.exists() && (newData.parent().parent().child('meta').child('ownerId').val() === auth.uid || newData.child('inviteProof').val() === root.child('beta').child('campaigns').child($campaign).child('meta').child('inviteCode').val())",
+              "characterPortrait": {
+                ".validate": "newData.isString() && newData.val().length <= 90000 && newData.val().matches(/^data:image\\/(webp|jpeg);base64,[A-Za-z0-9+\\/]+={0,2}$/) && newData.parent().child('characterId').val() !== '' && newData.val() === newData.parent().parent().parent().parent().parent().child('characters').child($uid).child(newData.parent().child('characterId').val()).child('portrait').val()"
+              },
+              "chatColor": {
+                ".validate": "newData.isString() && newData.val().matches(/^#[0-9a-fA-F]{6}$/) && (newData.parent().child('characterId').val() === '' || newData.val() === newData.parent().parent().parent().parent().parent().child('characters').child($uid).child(newData.parent().child('characterId').val()).child('chatColor').val())"
+              }
             }
           },
           "availability": {
@@ -371,7 +383,7 @@
               "ts"
             ],
             "$message": {
-              ".validate": "newData.hasChildren(['uid','name','body','ts']) && (!data.exists() || (newData.child('uid').val() === data.child('uid').val() && newData.child('name').val() === data.child('name').val() && newData.child('ts').val() === data.child('ts').val() && newData.child('editedAt').val() === now))",
+              ".validate": "newData.hasChildren(['uid','name','body','ts']) && (!data.exists() || (newData.child('uid').val() === data.child('uid').val() && newData.child('name').val() === data.child('name').val() && newData.child('ts').val() === data.child('ts').val() && newData.child('editedAt').val() === now)) && ((!newData.child('characterId').exists() && !newData.child('characterName').exists() && !newData.child('chatColor').exists()) || newData.hasChildren(['characterId','characterName','chatColor'])) && (!data.exists() || (newData.child('characterId').val() === data.child('characterId').val() && newData.child('characterName').val() === data.child('characterName').val() && newData.child('chatColor').val() === data.child('chatColor').val()))",
               "uid": {
                 ".validate": "newData.val() === auth.uid"
               },
@@ -390,6 +402,15 @@
               ".write": "auth != null && auth.token.email != null && root.child('beta').child('campaigns').child($campaign).child('members').child(auth.uid).exists() && newData.exists() && newData.child('uid').val() === auth.uid && (!data.exists() || data.child('uid').val() === auth.uid)",
               "editedAt": {
                 ".validate": "data.parent().exists() && newData.isNumber() && newData.val() === now"
+              },
+              "characterId": {
+                ".validate": "newData.isString() && newData.val().length <= 128 && ((data.exists() && newData.val() === data.val()) || (!data.exists() && newData.val() === root.child('beta').child('campaigns').child($campaign).child('members').child(auth.uid).child('characterId').val()))"
+              },
+              "characterName": {
+                ".validate": "newData.isString() && newData.val().length <= 30 && ((data.exists() && newData.val() === data.val()) || (!data.exists() && newData.val() === root.child('beta').child('campaigns').child($campaign).child('members').child(auth.uid).child('characterName').val()))"
+              },
+              "chatColor": {
+                ".validate": "newData.isString() && newData.val().matches(/^#[0-9a-fA-F]{6}$/) && (!data.exists() || newData.val() === data.val())"
               }
             }
           },

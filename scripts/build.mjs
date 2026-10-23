@@ -5,7 +5,7 @@ import { validateBetaConfig } from "../beta-core.mjs";
 validateBetaConfig(betaConfig, "localhost");
 if (process.argv.includes("--online") && betaConfig.mode !== "online") throw new Error("Před online nasazením nastav samostatný testovací Firebase projekt v beta-config.mjs.");
 const root = path.resolve(import.meta.dirname, "..");
-const files = ["index.html", "portal.js", "portal.css", "beta-config.mjs", "beta-core.mjs", "generator.html", "app.js", "critfail-core.mjs", "firebase-client.mjs", "overlay.html", "overlay-themes.mjs", "crit.png", "crit_fails.json", "crit_fails.meta.json"];
+const files = ["index.html", "portal.js", "portal.css", "portraits.mjs", "chat-colors.mjs", "beta-config.mjs", "beta-core.mjs", "generator.html", "app.js", "critfail-core.mjs", "firebase-client.mjs", "overlay.html", "overlay-themes.mjs", "crit.png", "crit_fails.json", "crit_fails.meta.json"];
 await fs.rm(path.join(root, "dist"), { recursive: true, force: true });
 await fs.mkdir(path.join(root, "dist"));
 for (const file of files) await fs.copyFile(path.join(root, file), path.join(root, "dist", file));

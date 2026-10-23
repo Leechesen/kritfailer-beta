@@ -21,6 +21,7 @@
 .day .number{display:flex;align-items:center;justify-content:space-between;gap:5px;width:100%}
 .day-check{font-size:.85rem;color:#a5e6b9}
 .day.mine:not(.everyone):not(.good){background:#1b3456;border-color:#749cec}
+.day.past{border-style:dashed;opacity:.75}
 .availability-links{display:flex;flex-wrap:wrap;gap:9px}
 .availability-links .empty{margin:0}
 .availability-link{text-align:left;flex:1 1 180px;max-width:100%}
@@ -45,3 +46,21 @@
 .candidate-form label:first-child{flex:0 1 125px}
 .candidate-form button{margin-top:10px}
 @media(max-width:700px){.chat-compose-footer>button{width:100%}.candidate-form>button{width:100%}.candidate-form label:first-child{flex:1 1 110px}.session-candidate{padding:13px}.message .byline{align-items:flex-start}.message-meta{gap:6px}.sidebar-role{font-size:.65rem}.candidate-heading>label{width:100%}}
+
+.avatar{display:inline-flex;align-items:center;justify-content:center;flex:0 0 40px;width:40px;height:40px;object-fit:cover;border-radius:9px;border:1px solid var(--border);background:#213657;color:var(--text);font-size:.8rem;font-weight:700;overflow:hidden}
+.avatar-placeholder{letter-spacing:.03em}
+.sidebar-item-heading,.member-identity{display:flex;align-items:center;gap:10px;min-width:0}
+.sidebar-item-heading>span:last-child,.member-identity>div{min-width:0;overflow-wrap:anywhere}
+.portrait-editor{display:flex;align-items:flex-start;gap:16px;margin:22px 0 12px}
+.avatar-preview{width:112px;height:112px;flex-basis:112px;font-size:1.8rem;border-radius:12px}
+.portrait-controls{flex:1;min-width:0}.portrait-controls label{margin-top:0}.portrait-controls input[type=file]{font-size:.76rem;padding:7px}
+.portrait-controls .muted{font-size:.72rem;margin:7px 0}.portrait-controls .link-button{padding:3px 0;color:#f6b7c2}
+.portrait-preview{flex:0 0 112px}
+.chat-color-form{margin-top:22px;padding-top:18px;border-top:1px solid var(--border);display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+.chat-color-form label{margin:0}.chat-color-form input[type=color]{width:72px;height:40px;padding:4px;cursor:pointer}.chat-color-form>div:not(.form-actions){flex:1;min-width:180px}.chat-color-form .muted{font-size:.75rem;margin:7px 0}.chat-color-form .form-actions{width:100%;justify-content:flex-start}
+.speaker-preview{font-size:.9rem;font-weight:600}
+.message{border-left:3px solid var(--speaker-color,var(--border))}
+.message-author{display:flex;align-items:center;gap:10px;min-width:0;color:var(--speaker-color,var(--text))}
+.message-author strong{display:block;overflow-wrap:anywhere}.message-character{display:block;font-size:.78rem;margin-top:2px;color:var(--speaker-color,var(--text))}
+.avatar-chat{width:36px;height:36px;flex-basis:36px;font-size:.7rem}
+@media(max-width:700px){.sidebar-item-heading{align-items:flex-start;gap:6px}.sidebar-item-heading .avatar{width:30px;height:30px;flex-basis:30px;font-size:.65rem}.message .byline{flex-wrap:wrap;gap:9px}.message-meta{margin-left:auto}.portrait-editor{gap:10px}.avatar-preview{width:88px;height:88px;flex-basis:88px}.portrait-preview{flex-basis:88px}.portrait-controls input[type=file]{max-width:100%}}
