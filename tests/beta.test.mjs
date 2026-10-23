@@ -1,7 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { validateBetaConfig, availabilitySummary, calendarDays, validTimeRange, sessionLabel } from "../beta-core.mjs";
-import { betaConfig } from "../beta-config.mjs";
+const betaConfig = {
+  environment: "beta", mode: "emulator", expectedProjectId: "demo-kritfailer-beta",
+  firebase: { apiKey: "demo-key", projectId: "demo-kritfailer-beta", authDomain: "demo-kritfailer-beta.firebaseapp.com", databaseURL: "https://demo-kritfailer-beta-default-rtdb.firebaseio.com" },
+};
+const onlineConfig = id => ({
+  environment: "beta", mode: "online", expectedProjectId: id,
+  firebase: { apiKey: "test", projectId: id, authDomain: `${id}.firebaseapp.com`, databaseURL: `https://${id}-default-rtdb.europe-west1.firebasedatabase.app` },
+});
 test("beta refuses the production project, mismatched services and hosted emulator mode", () => {
   assert.equal(validateBetaConfig(betaConfig, "localhost"), betaConfig);
   assert.throws(() => validateBetaConfig(betaConfig, "example.com"), /Lokální/);
@@ -9,6 +16,13 @@ test("beta refuses the production project, mismatched services and hosted emulat
   assert.throws(() => validateBetaConfig(bad, "localhost"), /ostrému/);
   const remote = { ...betaConfig, mode: "online", expectedProjectId: "my-kritfailer-beta", firebase: { apiKey: "test", projectId: "my-kritfailer-beta", authDomain: "my-kritfailer-beta.firebaseapp.com", databaseURL: "https://other-project-default-rtdb.europe-west1.firebasedatabase.app" } };
   assert.throws(() => validateBetaConfig(remote, "test.example"), /nepatří/);
+});
+test("online beta accepts the explicitly selected project without a naming convention", () => {
+  const config = onlineConfig("kritfail-5ab0a");
+  assert.equal(validateBetaConfig(config, "leechesen.github.io"), config);
+  config.expectedProjectId = "different-project";
+  assert.throws(() => validateBetaConfig(config, "leechesen.github.io"), /stejným ID/);
+  assert.throws(() => validateBetaConfig(onlineConfig("ktit-fail-generator"), "leechesen.github.io"), /ostrému/);
 });
 test("calendar counts players separately from DM and distinguishes missing votes", () => {
   const members = { dm: {}, a: {}, b: {}, c: {} };

@@ -3,7 +3,7 @@ export function validateBetaConfig(config, hostname) {
   if (config?.environment !== "beta" || !["emulator", "online"].includes(config.mode)) throw new Error("Chybí konfigurace testovací verze.");
   if (JSON.stringify(config).includes(PRODUCTION_PROJECT)) throw new Error("Beta se nesmí připojit k ostrému projektu.");
   const id = config.firebase?.projectId;
-  if (!id || id !== config.expectedProjectId || !/(?:^|-)(?:beta|test|dev)(?:-|$)/.test(id)) throw new Error("Nastav samostatný testovací Firebase projekt.");
+  if (!id || id !== config.expectedProjectId) throw new Error("Nastav samostatný testovací Firebase projekt se stejným ID v expectedProjectId a firebase.projectId.");
   const local = ["localhost", "127.0.0.1", "[::1]"].includes(hostname);
   if (config.mode === "emulator" && (!local || !id.startsWith("demo-"))) throw new Error("Lokální beta se spouští na http://localhost:5000. Pro online betu nejprve nastav vlastní testovací projekt.");
   if (config.mode === "online") {
