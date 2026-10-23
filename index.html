@@ -28,23 +28,22 @@
           <section id="campaignView" hidden>
             <div class="campaign-heading"><div><p class="eyebrow" id="roleLabel"></p><h1 id="campaignName"></h1></div><button id="play" class="success">🎲 Otevřít generátor</button></div>
             <div class="session-card card"><p class="eyebrow">Další sezení</p><h2 id="nextSession">Termín zatím není potvrzený</h2><p id="sessionNote" class="muted"></p><span class="muted">Časy jsou uvedené pro Prahu.</span></div>
-            <nav class="tabs" aria-label="Kampaň"><button data-tab="overview" class="selected">Přehled</button><button data-tab="calendar" class="secondary">Kalendář</button><button data-tab="chat" class="secondary">Chat</button></nav>
-            <section id="overview" class="tab-panel">
+            <nav class="tabs" aria-label="Kampaň"><button data-tab="chat" class="selected">Chat</button><button data-tab="calendar" class="secondary">Kalendář</button><button data-tab="overview" class="secondary">Přehled</button></nav>
+            <section id="chat" class="tab-panel"><div class="card chat-card"><h2>Chat kampaně</h2><div id="messages" class="messages" aria-live="polite"></div><form id="chatForm"><div id="chatEditMode" class="chat-edit-mode" hidden><span>Upravuješ svoji zprávu</span><button id="cancelMessageEdit" type="button" class="link-button">Zrušit úpravu</button></div><label class="sr-only" for="message">Zpráva</label><textarea id="message" maxlength="2000" rows="3" required placeholder="Napiš zprávu družině…" aria-describedby="chatKeyboardHint"></textarea><div class="chat-compose-footer"><span id="chatKeyboardHint" class="muted">Enter odešle · Ctrl + Enter vloží nový řádek</span><button id="chatSubmit">Odeslat zprávu</button></div></form></div></section>
+            <section id="calendar" class="tab-panel" hidden>
+              <div class="card"><div class="calendar-heading"><button id="previousMonth" class="secondary" aria-label="Předchozí měsíc">←</button><h2 id="monthTitle"></h2><button id="nextMonth" class="secondary" aria-label="Další měsíc">→</button></div>
+                <p class="muted">Kliknutím označ den, kdy můžeš. Dalším kliknutím označení zrušíš. Podrobnosti doplníš pod kalendářem.</p>
+                <div class="weekdays" aria-hidden="true"><span>Po</span><span>Út</span><span>St</span><span>Čt</span><span>Pá</span><span>So</span><span>Ne</span></div><div id="calendarGrid" class="calendar-grid"></div>
+                <p class="calendar-legend">✓ tvoje dostupnost · zelená: mohou všichni hráči i DM · počet hráčů nezahrnuje DM</p>
+              </div>
+              <div class="card"><h2>Moje termíny v tomto měsíci</h2><div id="myAvailabilityDays" class="availability-links"></div></div>
+              <div id="availabilityDetail" class="card" hidden><h2 id="selectedDateTitle"></h2><p class="muted">Na tento den máš označeno „můžu“. Časy i poznámka jsou volitelné.</p><form id="availabilityForm"><div class="time-inputs"><label>Od (volitelné)<input id="availableFrom" type="time"></label><label>Do (volitelné)<input id="availableUntil" type="time"></label></div><label>Poznámka (volitelné)<input id="availabilityNote" maxlength="160" placeholder="Např. dorazím po práci"></label><div class="form-actions"><button>Uložit podrobnosti</button><button id="removeAvailability" class="secondary" type="button">Zrušit tento termín</button></div></form><div id="dayMembers"></div></div>
+              <div id="sessionControls" class="card" hidden><div class="candidate-heading"><div><h2>Termíny pro další sezení</h2><p class="muted">Nadcházející dny označené družinou. U vybraného termínu nastav začátek a potvrď sezení všem.</p></div><label>Řadit podle<select id="candidateSort"><option value="date">Data</option><option value="players">Počtu hráčů</option></select></label></div><div id="sessionCandidates" class="session-candidates"></div></div>
+            </section>
+            <section id="overview" class="tab-panel" hidden>
               <div class="card"><h2>Družina</h2><div id="members"></div><form id="selectCharacterForm" class="inline-form"><label>Tvoje postava v kampani<select id="campaignCharacter"></select></label><button class="secondary">Použít postavu</button></form></div>
               <div id="ownerControls" class="card" hidden><h2>Správa kampaně</h2><label>Pozvánkový kód<input id="inviteCode" readonly></label><button id="copyInvite" class="secondary">Kopírovat kód</button><form id="dmForm" class="inline-form"><label>Dungeon Master<select id="dmSelect"></select></label><button class="secondary">Nastavit DM</button></form></div>
             </section>
-            <section id="calendar" class="tab-panel" hidden>
-              <div class="card"><div class="calendar-heading"><button id="previousMonth" class="secondary" aria-label="Předchozí měsíc">←</button><h2 id="monthTitle"></h2><button id="nextMonth" class="secondary" aria-label="Další měsíc">→</button></div>
-                <p class="muted">Vyber den a označ, kdy můžeš. Počet na kartě počítá hráče; dostupnost DM je zvlášť.</p>
-                <div class="weekdays" aria-hidden="true"><span>Po</span><span>Út</span><span>St</span><span>Čt</span><span>Pá</span><span>So</span><span>Ne</span></div><div id="calendarGrid" class="calendar-grid"></div>
-                <p class="calendar-legend">Zelená: mohou všichni hráči i DM. Zvýrazněný okraj: tvoje dostupnost.</p>
-              </div>
-              <div class="calendar-detail-layout">
-                <div class="card"><h2 id="selectedDateTitle"></h2><form id="availabilityForm"><label>Tvoje dostupnost<select id="availabilityStatus"><option value="unknown">Nevyplněno</option><option value="yes">Můžu</option><option value="maybe">Možná</option><option value="no">Nemůžu</option></select></label><div class="time-inputs"><label>Od (volitelné)<input id="availableFrom" type="time"></label><label>Do (volitelné)<input id="availableUntil" type="time"></label></div><label>Poznámka<input id="availabilityNote" maxlength="160" placeholder="Např. dorazím po práci"></label><button>Uložit dostupnost</button></form><div id="dayMembers"></div></div>
-                <div id="sessionControls" class="card" hidden><h2>Potvrdit sezení</h2><p class="muted">Potvrzený termín se zobrazí všem členům kampaně.</p><form id="sessionForm"><label>Datum<input id="sessionDate" type="date" required></label><label>Čas zahájení<input id="sessionTime" type="time" value="18:00" required></label><label>Místo nebo poznámka<input id="sessionDetails" maxlength="300"></label><button class="success">Potvrdit termín</button></form></div>
-              </div>
-            </section>
-            <section id="chat" class="tab-panel" hidden><div class="card chat-card"><h2>Chat kampaně</h2><div id="messages" class="messages" aria-live="polite"></div><form id="chatForm"><label class="sr-only" for="message">Zpráva</label><textarea id="message" maxlength="2000" rows="3" required placeholder="Napiš zprávu družině…"></textarea><button>Odeslat zprávu</button></form></div></section>
           </section>
         </div>
       </div>

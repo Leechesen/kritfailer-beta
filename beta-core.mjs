@@ -24,6 +24,20 @@ export function availabilitySummary(members, dmId, votes = {}) {
   const ids = Object.keys(members || {}).filter(id => id !== dmId);
   return { total: ids.length, yes: ids.filter(id => votes[id]?.status === "yes").length, maybe: ids.filter(id => votes[id]?.status === "maybe").length, answered: ids.filter(id => votes[id]).length, dm: votes[dmId]?.status || "unknown" };
 }
+export function sessionCandidates(members, dmId, availability, fromDate, order = "date") {
+  const result = [];
+  for (const [month, days] of Object.entries(availability || {})) {
+    for (const [day, votes] of Object.entries(days || {})) {
+      const date = `${month}-${day}`;
+      if (!/^20\d{2}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(date) || date < fromDate) continue;
+      const parsed = new Date(`${date}T12:00:00Z`);
+      if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== date) continue;
+      const summary = availabilitySummary(members, dmId, votes);
+      if (summary.yes > 0 || summary.dm === "yes") result.push({ date, ...summary, votes });
+    }
+  }
+  return result.sort((a, b) => (order === "players" ? b.yes - a.yes : 0) || a.date.localeCompare(b.date));
+}
 export function sessionLabel(session) {
   if (!session?.date || !session?.time) return "Termín zatím není potvrzený";
   const date = new Date(`${session.date}T12:00:00Z`);

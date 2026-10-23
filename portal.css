@@ -3,3 +3,45 @@
 @media(max-width:700px){main{padding:18px 12px}header{padding:12px;align-items:flex-start;flex-wrap:wrap}.beta-strip{padding:5px 12px}.beta-strip span{display:none}.portal-layout{grid-template-columns:1fr}.portal-layout>aside{display:grid;grid-template-columns:1fr 1fr;gap:12px}.portal-layout>aside .card{padding:12px}.portal-layout>aside h2{font-size:16px}.campaign-heading #play{width:100%}.calendar-grid,.weekdays{gap:4px}.day{min-height:77px;padding:5px 3px;gap:2px}.day .count{font-size:.7rem}.day .number{font-size:.9rem}.day small{font-size:.58rem}.calendar-heading h2{font-size:17px}.time-inputs{gap:8px}#account{font-size:.85rem}#account button{padding:6px 9px}.inline-form button{width:100%}}
 
 .day.good{background:#3a321b;border-color:#9c7d35}
+
+.campaign-button strong,.character-button strong{display:block;overflow-wrap:anywhere}
+.campaign-button small,.character-button small{display:block;color:var(--muted);font-weight:400}
+.sidebar-role{display:inline-block;margin-top:5px;color:var(--gold);font-size:.72rem;font-weight:500}
+.character-campaigns{display:flex;flex-direction:column;align-items:flex-start;gap:4px;margin-top:10px;font-weight:400;font-size:.76rem}
+.sidebar-caption{font-size:.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
+.campaign-tag{border-left:2px solid var(--gold);padding-left:7px;text-align:left;overflow-wrap:anywhere;max-width:100%}
+.sidebar-unassigned{color:var(--muted)}
+.chat-compose-footer,.form-actions{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.chat-compose-footer .muted{font-size:.76rem}
+.chat-edit-mode{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 12px;border-left:3px solid var(--gold);background:#e9a02010;font-size:.85rem}
+.message-meta{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:10px}
+.edit-message{padding:1px 5px;color:#eeb6be;font-size:inherit}
+.message.editing{border-color:var(--gold)}
+.edited{font-size:.7rem;font-style:italic}
+.day .number{display:flex;align-items:center;justify-content:space-between;gap:5px;width:100%}
+.day-check{font-size:.85rem;color:#a5e6b9}
+.day.mine:not(.everyone):not(.good){background:#1b3456;border-color:#749cec}
+.availability-links{display:flex;flex-wrap:wrap;gap:9px}
+.availability-links .empty{margin:0}
+.availability-link{text-align:left;flex:1 1 180px;max-width:100%}
+.availability-link strong,.availability-link small{display:block;overflow-wrap:anywhere}
+.availability-link small{font-size:.75rem;font-weight:400;color:var(--muted);margin-top:3px}
+.availability-link.selected{border-color:var(--gold)}
+#availabilityDetail{scroll-margin-top:18px}
+.candidate-heading{display:flex;justify-content:space-between;align-items:flex-start;gap:18px;flex-wrap:wrap}
+.candidate-heading>div{flex:1;min-width:200px}
+.candidate-heading label{margin-top:0;min-width:165px}
+.session-candidates{display:flex;flex-direction:column;gap:14px}
+.session-candidate{background:#101c35;border:1px solid var(--border);border-radius:9px;padding:17px}
+.session-candidate.confirmed{border-color:var(--gold)}
+.candidate-title{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.candidate-title h3{font-size:1rem;margin:0;line-height:1.4}
+.candidate-count{font-size:.8rem;font-weight:700;white-space:nowrap;background:#264360;border-radius:5px;padding:4px 8px}
+.candidate-dm{font-size:.8rem;color:var(--muted);margin:8px 0 12px}
+.session-candidate details{font-size:.8rem;color:var(--muted);margin-bottom:10px}
+.session-candidate summary{cursor:pointer;color:var(--text)}
+.candidate-form{display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap}
+.candidate-form label{margin:0;flex:1 1 170px}
+.candidate-form label:first-child{flex:0 1 125px}
+.candidate-form button{margin-top:10px}
+@media(max-width:700px){.chat-compose-footer>button{width:100%}.candidate-form>button{width:100%}.candidate-form label:first-child{flex:1 1 110px}.session-candidate{padding:13px}.message .byline{align-items:flex-start}.message-meta{gap:6px}.sidebar-role{font-size:.65rem}.candidate-heading>label{width:100%}}
