@@ -1,0 +1,51 @@
+name: Verify and publish isolated beta
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: beta-pages-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  build:
+    if: github.repository != 'Leechesen/dnd-crit-fail-generator'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install converter
+        run: pip install openpyxl
+      - name: Verify beta and generator
+        run: |
+          python -m unittest discover -s tests -p 'test_*.py'
+          node --test tests/*.test.mjs
+      - name: Convert Excel
+        run: python excel_to_json.py
+      - name: Build isolated online beta
+        run: node scripts/build.mjs --online
+      - uses: actions/upload-pages-artifact@v3
+        if: github.event_name != 'pull_request'
+        with:
+          path: dist
+  deploy:
+    if: github.event_name != 'pull_request' && github.repository != 'Leechesen/dnd-crit-fail-generator'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/deploy-pages@v4
+        id: deployment
