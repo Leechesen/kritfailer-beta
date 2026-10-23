@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KritFailer Overlay</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: transparent; }
+  body { font-family: 'Segoe UI', Arial, sans-serif; }
+  [hidden] { display: none !important; }
+  #status { position: fixed; inset: 0; display: grid; place-items: center; padding: 6vmin; color: #ddd9ed; font-size: clamp(18px, 3.5vmin, 80px); text-align: center; }
+  #overlay-wrap { position: fixed; inset: 0; opacity: 0; pointer-events: none; transition: opacity .6s ease, transform .6s ease; }
+  #overlay-wrap.visible { opacity: 1; transform: scale(1); }
+  #overlay-wrap.hidden-out { opacity: 0; transform: scale(.985); }
+  .panel {
+    --surface: #181315; --ink: #f0e5ce; --accent: #d6b576; --heading: var(--accent);
+    --type: clamp(16px, 4.5vw, 190px);
+    position: relative; isolation: isolate; width: 100%; height: 100%; overflow: hidden;
+    color: var(--ink); background: var(--surface); font-size: var(--type); line-height: 1.24;
+  }
+  .content { position: relative; z-index: 1; display: flex; flex-direction: column; width: 100%; height: 100%; min-height: 0; padding: 4.5vmin 5.5vmin; }
+  .heading-row { display: flex; align-items: center; gap: 2vmin; min-width: 0; padding-bottom: 2vmin; border-bottom: max(1px, .08vmin) solid color-mix(in srgb, var(--accent) 40%, transparent); }
+  #titleText { flex: 1; min-width: 0; color: var(--heading); font: inherit; font-weight: 700; letter-spacing: .025em; overflow-wrap: anywhere; }
+  .emblem { display: grid; place-items: center; flex: 0 0 auto; width: 1em; height: 1em; color: var(--heading); }
+  svg { display: block; width: 100%; height: 100%; }
+  .main { display: flex; flex: 1; align-items: center; min-width: 0; min-height: 0; margin: 2.5vmin 0; }
+  .result-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.8fr); grid-template-rows: minmax(0, 1fr); align-items: center; gap: 4vmin; width: 100%; height: 100%; min-height: 0; }
+  .text { min-width: 0; margin: 0; font: inherit; font-weight: 600; line-height: inherit; overflow-wrap: anywhere; white-space: pre-line; }
+  #damageText { padding: 1vmin 3.5vmin 1vmin 0; border-right: max(1px, .09vmin) solid color-mix(in srgb, var(--accent) 50%, transparent); color: var(--accent); }
+  /* Explicit foregrounds keep the light themes readable in every host. */
+  #effectText, #effectText * { color: var(--ink); text-shadow: none; }
+  .result-grid.single { grid-template-columns: minmax(0, 1fr); }
+  .result-grid.single #damageText { padding: 0; border: 0; }
+  .player-row { display: flex; align-items: baseline; justify-content: space-between; gap: 3vmin; min-width: 0; color: var(--heading); font: inherit; }
+  .player-context { min-width: 0; overflow-wrap: anywhere; }
+  .player-context *, #duration { font: inherit; color: inherit; }
+  #playerName { font-weight: 700; }
+  #duration { flex: 0 0 auto; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .timer-track { flex: 0 0 auto; height: max(3px, .5vmin); margin-top: 2vmin; overflow: hidden; background: color-mix(in srgb, var(--accent) 18%, transparent); }
+  #timerBar { width: 100%; height: 100%; background: var(--accent); transform-origin: left center; }
+  .decoration { display: none; position: absolute; z-index: 0; pointer-events: none; }
+
+  .panel[data-theme="grimoire"] { font-family: Georgia, 'Times New Roman', serif; background: radial-gradient(ellipse at 50% 45%, #49312555, transparent 68%), var(--surface); border: max(1px, .1vmin) solid #8c6d3c; }
+  [data-theme="grimoire"] .content { padding: 5vmin 7vmin; }
+  [data-theme="grimoire"] .heading-row { justify-content: center; text-align: center; border: 0; }
+  [data-theme="grimoire"] #titleText { flex: 0 1 auto; }
+  [data-theme="grimoire"] .corners { display: block; inset: 2vmin; color: var(--accent); }
+  .corners span { position: absolute; width: 5vmin; height: 5vmin; border: max(1px, .1vmin) solid currentColor; }
+  .corners span::after { content: ''; position: absolute; width: 1vmin; height: 1vmin; background: currentColor; transform: rotate(45deg); }
+  .corners span:nth-child(1) { top: 0; left: 0; border-right: 0; border-bottom: 0; }
+  .corners span:nth-child(2) { top: 0; right: 0; border-left: 0; border-bottom: 0; }
+  .corners span:nth-child(3) { bottom: 0; left: 0; border-right: 0; border-top: 0; }
+  .corners span:nth-child(4) { bottom: 0; right: 0; border-left: 0; border-top: 0; }
+  .corners span:nth-child(1)::after { top: -.5vmin; left: -.5vmin; }
+  .corners span:nth-child(2)::after { top: -.5vmin; right: -.5vmin; }
+  .corners span:nth-child(3)::after { bottom: -.5vmin; left: -.5vmin; }
+  .corners span:nth-child(4)::after { bottom: -.5vmin; right: -.5vmin; }
+
+  .panel[data-theme="inferno"] { --surface: #130d0d; --ink: #fff1e6; --accent: #ff9e64; background: radial-gradient(ellipse at 4% 100%, #7d2b1c66, transparent 66%), var(--surface); }
+  [data-theme="inferno"] .content { width: 90%; margin-left: 10%; padding: 4.5vmin; }
+  [data-theme="inferno"] .inferno-rail { display: grid; place-items: center; inset: 0 auto 0 0; width: 10%; color: var(--accent); background: #f17a3619; border-right: max(1px, .1vmin) solid #f17a3666; }
+  .inferno-rail svg { width: 65%; height: auto; filter: drop-shadow(0 0 2vmin #ff6a3d66); }
+  [data-theme="inferno"] .emblem { display: none; }
+  [data-theme="inferno"]::after { content: ''; position: absolute; top: 0; right: 0; width: .7vmin; height: 100%; background: var(--accent); box-shadow: 0 0 4vmin var(--accent); opacity: .7; }
+
+  .panel[data-theme="astral"] { --surface: #0f1028; --ink: #f0edff; --accent: #bfaaff; background: radial-gradient(ellipse at 100% 40%, #7654cc44, transparent 65%), radial-gradient(ellipse at 5% 100%, #347b8f33, transparent 60%), var(--surface); }
+  [data-theme="astral"] .orbits { display: block; width: 84vmin; height: 84vmin; right: -32vmin; top: 8vmin; border: max(1px, .1vmin) solid #bfaaff44; border-radius: 50%; box-shadow: 0 0 0 10vmin #81d3e108, 0 0 0 20vmin #bfaaff08; }
+  [data-theme="astral"] .orbits::before { content: ''; position: absolute; inset: 8vmin; border: max(1px, .1vmin) dashed #81d3e144; border-radius: 50%; }
+  [data-theme="astral"] .stars { display: block; inset: 0; background: radial-gradient(circle at 81% 12%, #81d3e1 0 .12vmin, transparent .2vmin), radial-gradient(circle at 93% 74%, #bfaaff 0 .15vmin, transparent .25vmin), radial-gradient(circle at 70% 86%, #81d3e1 0 .1vmin, transparent .2vmin), radial-gradient(circle at 17% 19%, #bfaaff 0 .1vmin, transparent .2vmin); }
+  [data-theme="astral"] .timer-track { order: 2; margin: 0 0 2vmin; }
+  [data-theme="astral"] .player-row { order: 3; }
+  [data-theme="astral"] #timerBar { background: linear-gradient(90deg, var(--accent), #81d3e1); }
+
+  .panel[data-theme="parchment"] { --surface: #efe0bb; --ink: #302115; --accent: #743123; font-family: Georgia, 'Times New Roman', serif; background: radial-gradient(ellipse at 12% 12%, #9b754922, transparent 40%), radial-gradient(ellipse at 98% 95%, #9b754933, transparent 40%), repeating-linear-gradient(1deg, transparent 0 3px, #88633b08 4px 5px), var(--surface); box-shadow: inset 0 0 5vmin #88633b44; }
+  [data-theme="parchment"] .content { padding-left: 9vmin; }
+  [data-theme="parchment"] .spine { display: block; top: 0; bottom: 0; left: 3vmin; width: 1.5vmin; border-left: 1px solid #9b7549; border-right: 1px solid #9b7549; opacity: .5; background: repeating-linear-gradient(45deg, transparent 0 .7vmin, #9b7549 .7vmin .82vmin, transparent .82vmin 1.6vmin); }
+  [data-theme="parchment"] .emblem { order: 2; width: 1.25em; height: 1.25em; padding: .25em; background: var(--accent); color: var(--surface); border-radius: 50%; box-shadow: inset 0 0 0 .075em #30211544; transform: rotate(9deg); }
+
+  .panel[data-theme="nordic"] { --surface: #101b22; --ink: #e1edf1; --accent: #9ccbd8; background: linear-gradient(120deg, #9ccbd812, transparent 55%), var(--surface); border-top: .65vmin solid var(--accent); }
+  [data-theme="nordic"] .emblem { order: 2; }
+  [data-theme="nordic"] .mountain { display: block; width: 75vmin; height: 75vmin; right: -16vmin; bottom: -48vmin; transform: rotate(45deg); border: max(1px, .1vmin) solid #9ccbd833; box-shadow: inset 2vmin 2vmin #9ccbd809, inset 4vmin 4vmin #9ccbd809; }
+
+  .panel[data-theme="comic"] { --surface: #f8d25e; --ink: #201c1a; --accent: #992d2a; --heading: #201c1a; --bubble: #fff8e8; background: repeating-conic-gradient(from 18deg at 88% 15%, #992d2a12 0 12deg, transparent 12deg 24deg), var(--surface); }
+  [data-theme="comic"] .heading-row { color: var(--bubble); padding: 1.5vmin 2vmin; background: var(--ink); border: 0; transform: rotate(-.7deg); box-shadow: .8vmin .8vmin 0 var(--accent); }
+  [data-theme="comic"] #titleText, [data-theme="comic"] .emblem { color: var(--bubble); }
+  [data-theme="comic"] .main { position: relative; margin: 3.5vmin 1vmin 3.5vmin 0; padding: 2.5vmin; background: var(--bubble); border: max(2px, .35vmin) solid var(--ink); box-shadow: 1vmin 1vmin 0 var(--ink); }
+  [data-theme="comic"] .main::after { content: ''; position: absolute; bottom: -1.9vmin; left: 70%; width: 3.5vmin; height: 3.5vmin; background: var(--bubble); border-right: max(2px, .35vmin) solid var(--ink); border-bottom: max(2px, .35vmin) solid var(--ink); transform: skewY(-25deg) rotate(30deg); }
+  [data-theme="comic"] .player-context { padding: .5vmin 1.5vmin; background: var(--ink); color: var(--bubble); }
+  [data-theme="comic"] .halftone { display: block; inset: 0; opacity: .12; background: radial-gradient(var(--ink) .15vmin, transparent .16vmin); background-size: 1.4vmin 1.4vmin; mask-image: linear-gradient(120deg, transparent 50%, #000); }
+  [data-theme="comic"] #timerBar { background: var(--ink); }
+
+  .panel[data-theme="ice"] { --surface: #e7f6fd; --ink: #153951; --accent: #205d7d; background: radial-gradient(ellipse at 15% 5%, #fff, transparent 55%), linear-gradient(125deg, transparent 60%, #205d7d14), var(--surface); border: max(1px, .15vmin) solid #c3e0ef; }
+  [data-theme="ice"] #damageText { padding: 2vmin; border: 0; border-left: .4vmin solid var(--accent); border-radius: .8vmin; background: #d6eaf5; box-shadow: inset 0 0 2vmin #ffffff99; color: var(--ink); }
+  [data-theme="ice"] .crystal { display: block; background: linear-gradient(110deg, #ffffffcc 48%, #205d7d29 49%); clip-path: polygon(50% 0, 85% 28%, 67% 100%, 20% 76%, 5% 35%); opacity: .65; }
+  .crystal-one { width: 32vmin; height: 75vmin; right: -14vmin; top: -12vmin; transform: rotate(18deg); }
+  .crystal-two { width: 18vmin; height: 50vmin; right: -2vmin; top: 0; transform: rotate(37deg); }
+  .crystal-three { width: 26vmin; height: 48vmin; left: -10vmin; bottom: -28vmin; transform: rotate(145deg); }
+
+  @media (max-aspect-ratio: 1/1) {
+    .result-grid { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto; align-content: center; gap: 3vmin; }
+    #damageText { padding: 0 0 3vmin; border-right: 0; border-bottom: max(1px, .15vmin) solid color-mix(in srgb, var(--accent) 50%, transparent); }
+    .result-grid.single { grid-template-rows: minmax(0, 1fr); }
+  }
+  @media (prefers-reduced-motion: reduce) { #overlay-wrap { transition: opacity .1s; } }
+</style>
+</head>
+<body>
+<svg aria-hidden="true" style="position:absolute;width:0;height:0;overflow:hidden" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <symbol id="icon-skull" viewBox="0 0 24 24"><path d="M7 18v4h10v-4c3-1.5 5-4 5-8C22 4 17.5 1 12 1S2 4 2 10c0 4 2 6.5 5 8Z"/><circle cx="8" cy="10" r="2"/><circle cx="16" cy="10" r="2"/><path d="m10.5 16 1.5-3 1.5 3ZM10 19v3m4-3v3"/></symbol>
+    <symbol id="icon-flame" viewBox="0 0 24 24"><path d="M12 2c2 5-3 7-1 10 2-1 4-3 4-5 3 3 5 6 5 9a8 8 0 0 1-16 0c0-4 4-8 8-14Z"/><path d="M12 14c3 3 4 7 0 8-4-1-3-5 0-8Z"/></symbol>
+    <symbol id="icon-stars" viewBox="0 0 24 24"><path d="m12 2 2.5 7.5L22 12l-7.5 2.5L12 22l-2.5-7.5L2 12l7.5-2.5ZM21 1v5m-2.5-2.5h5M3 18v5m-2.5-2.5h5"/></symbol>
+    <symbol id="icon-scroll" viewBox="0 0 24 24"><path d="M7 3h11a3 3 0 0 1 3 3v2h-5V6a3 3 0 0 0-6 0v12a3 3 0 0 1-6 0v-2h11v2a3 3 0 0 0 3 3H7M10 8h6M10 12h6"/></symbol>
+    <symbol id="icon-mountain" viewBox="0 0 24 24"><path d="m2 21 8-18 12 18ZM7 10l4 3 3-3M15 3l2-2 5 8"/></symbol>
+    <symbol id="icon-zap" viewBox="0 0 24 24"><path d="m14 1-12 13h9l-1 9 12-13h-9Z"/></symbol>
+    <symbol id="icon-snow" viewBox="0 0 24 24"><path d="M12 1v22M2.5 6.5l19 11m0-11-19 11M9 3l3 3 3-3M9 21l3-3 3 3M2 10l4-1 1-4m10 14 1-4 4-1M2 14l4 1 1 4M17 5l1 4 4 1"/></symbol>
+  </defs>
+</svg>
+<div id="status" role="status" hidden></div>
+<div id="overlay-wrap" aria-live="polite">
+  <div class="panel" id="panel" data-theme="grimoire">
+    <div class="decoration corners" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
+    <div class="decoration inferno-rail" aria-hidden="true"><svg fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-flame"/></svg></div>
+    <div class="decoration orbits" aria-hidden="true"></div><div class="decoration stars" aria-hidden="true"></div>
+    <div class="decoration spine" aria-hidden="true"></div><div class="decoration mountain" aria-hidden="true"></div><div class="decoration halftone" aria-hidden="true"></div>
+    <div class="decoration crystal crystal-one" aria-hidden="true"></div><div class="decoration crystal crystal-two" aria-hidden="true"></div><div class="decoration crystal crystal-three" aria-hidden="true"></div>
+    <div class="content" id="content">
+      <div class="heading-row">
+        <div class="emblem" aria-hidden="true"><svg fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><use id="themeIcon" href="#icon-skull"/></svg></div>
+        <h1 id="titleText">CRIT FAIL</h1>
+      </div>
+      <div class="main" id="effectArea"><div class="result-grid" id="resultGrid"><p class="text" id="damageText" hidden></p><p class="text" id="effectText"></p></div></div>
+      <div class="player-row"><span class="player-context"><span>Hráč: </span><span id="playerName"></span></span><span id="duration">20 s</span></div>
+      <div class="timer-track" aria-hidden="true"><div id="timerBar"></div></div>
+    </div>
+  </div>
+</div>
+<script type="module">
+import { DISPLAY_MS, normalizeOverlayTheme, splitOverlayEffect } from "./overlay-themes.mjs";
+const $ = id => document.getElementById(id);
+const panel = $("panel"), wrap = $("overlay-wrap"), content = $("content"), grid = $("resultGrid");
+const damageText = $("damageText"), effectText = $("effectText"), titleText = $("titleText");
+const params = new URLSearchParams(location.search), preview = params.get("preview") === "1";
+let hideTimer, countdownTimer, progressAnimation, expiresAt = 0, lastEventId = null;
+
+// One shared size keeps the title, both consequences and every player label
+// equally large. Native text and SVG decorations stay sharp on a 4K screen.
+function fitOverlayText() {
+  panel.style.removeProperty("--type");
+  const maximum = parseFloat(getComputedStyle(panel).fontSize);
+  const fits = () => {
+    if (content.scrollHeight > content.clientHeight + 1 || content.scrollWidth > content.clientWidth + 1 || grid.clientHeight < 1) return false;
+    const area = grid.getBoundingClientRect();
+    return [damageText, effectText].filter(element => !element.hidden).every(element => {
+      const box = element.getBoundingClientRect();
+      return box.top >= area.top - 1 && box.bottom <= area.bottom + 1 && element.scrollWidth <= element.clientWidth + 1;
+    });
+  };
+  if (fits()) return;
+  let low = Math.min(8, maximum), high = maximum;
+  for (let step = 0; step < 12; step++) {
+    const size = (low + high) / 2;
+    panel.style.setProperty("--type", `${size}px`);
+    if (fits()) low = size; else high = size;
+  }
+  panel.style.setProperty("--type", `${low}px`);
+}
+function applyTheme(value) {
+  const theme = normalizeOverlayTheme(value);
+  panel.dataset.theme = theme;
+  const icons = { grimoire: "skull", inferno: "flame", astral: "stars", parchment: "scroll", nordic: "mountain", comic: "zap", ice: "snow" };
+  $("themeIcon").setAttribute("href", `#icon-${icons[theme]}`);
+  fitOverlayText();
+}
+function hideOverlay() {
+  clearTimeout(hideTimer); clearInterval(countdownTimer); progressAnimation?.cancel();
+  wrap.classList.remove("visible"); wrap.classList.add("hidden-out");
+}
+function showOverlay(data, remainingMs = DISPLAY_MS) {
+  clearTimeout(hideTimer); clearInterval(countdownTimer); progressAnimation?.cancel();
+  const parts = splitOverlayEffect(data.effect);
+  titleText.textContent = data.title || "CRIT FAIL";
+  damageText.textContent = parts.damage; damageText.hidden = !parts.damage;
+  effectText.textContent = parts.consequence; effectText.hidden = !parts.consequence;
+  grid.classList.toggle("single", !parts.damage || !parts.consequence);
+  $("playerName").textContent = data.player || "";
+  fitOverlayText();
+  wrap.classList.remove("hidden-out"); wrap.classList.add("visible");
+  if (preview) {
+    $("duration").textContent = "20 s"; $("timerBar").style.transform = "scaleX(.73)";
+    return;
+  }
+  expiresAt = Date.now() + remainingMs;
+  const updateCountdown = () => { $("duration").textContent = `${Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000))} s`; };
+  updateCountdown(); countdownTimer = setInterval(updateCountdown, 200);
+  progressAnimation = $("timerBar").animate([{ transform: `scaleX(${remainingMs / DISPLAY_MS})` }, { transform: "scaleX(0)" }], { duration: remainingMs, easing: "linear", fill: "forwards" });
+  hideTimer = setTimeout(hideOverlay, remainingMs);
+}
+let resizeFrame;
+window.addEventListener("resize", () => { cancelAnimationFrame(resizeFrame); resizeFrame = requestAnimationFrame(fitOverlayText); });
+document.fonts.ready.then(fitOverlayText);
+function status(message) { $("status").textContent = message; $("status").hidden = false; }
+
+if (preview) {
+  applyTheme(params.get("theme"));
+  showOverlay({ title: "Dexterity – Sleight of Hand", effect: "Utrpíš 3d6 drtivého poškození. Příští tři ověření Obratnosti mají postih −3.", player: "Hea" });
+} else if (!params.get("room")) {
+  status("Není vybraná místnost.");
+} else {
+  try {
+    const { connectFirebase, ref, onValue } = await import("./firebase-client.mjs");
+    const { db } = await connectFirebase({ allowAnonymous: true }), path = `roomsV2/${params.get("room")}`;
+    onValue(ref(db, `${path}/overlayConfig`), snap => applyTheme(snap.val()?.theme), error => console.error("Nastavení vzhledu overlaye", error));
+    onValue(ref(db, `${path}/overlay`), snap => {
+      if (!snap.exists()) { hideOverlay(); return; }
+      const data = snap.val();
+      if (!data?.id || data.id === lastEventId) return;
+      lastEventId = data.id;
+      const remaining = DISPLAY_MS - Math.max(0, Date.now() - (Number(data.ts) || 0));
+      if (remaining <= 0) { hideOverlay(); return; }
+      showOverlay(data, remaining);
+    }, error => { hideOverlay(); console.error(error); status("Overlay se nepodařilo připojit. Ověř nastavení Firebase."); });
+  } catch (error) {
+    console.error(error); status("Overlay se nepodařilo připojit. Ověř nastavení Firebase.");
+  }
+}
+</script>
+</body>
+</html>

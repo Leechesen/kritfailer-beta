@@ -1,0 +1,15 @@
+import fs from "node:fs/promises";
+import path from "node:path";
+import { betaConfig } from "../beta-config.mjs";
+import { validateBetaConfig } from "../beta-core.mjs";
+validateBetaConfig(betaConfig, "localhost");
+if (process.argv.includes("--online") && betaConfig.mode !== "online") throw new Error("Před online nasazením nastav samostatný testovací Firebase projekt v beta-config.mjs.");
+const root = path.resolve(import.meta.dirname, "..");
+const files = ["index.html", "portal.js", "portal.css", "beta-config.mjs", "beta-core.mjs", "generator.html", "app.js", "critfail-core.mjs", "firebase-client.mjs", "overlay.html", "overlay-themes.mjs", "crit.png", "crit_fails.json", "crit_fails.meta.json"];
+await fs.rm(path.join(root, "dist"), { recursive: true, force: true });
+await fs.mkdir(path.join(root, "dist"));
+for (const file of files) await fs.copyFile(path.join(root, file), path.join(root, "dist", file));
+const scan = await Promise.all(files.filter(f => /\.(?:mjs|js|html)$/.test(f)).map(f => fs.readFile(path.join(root, "dist", f), "utf8")));
+if (scan.some(content => /AIzaSyDI3qi2zqosghoQNRQ31hDZU1y_tBioedY|https:\/\/ktit-fail-generator/.test(content))) throw new Error("Ostrá konfigurace nesmí být součástí bety.");
+await fs.writeFile(path.join(root, "dist", ".nojekyll"), "");
+console.log(`Beta připravena (${betaConfig.mode}, ${betaConfig.firebase.projectId}).`);

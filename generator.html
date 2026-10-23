@@ -1,0 +1,617 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KritFailer</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #1a1a2e;
+    --bg2: #16213e;
+    --bg3: #0f3460;
+    --accent: #e94560;
+    --accent2: #e9a020;
+    --green: #2a9d5c;
+    --blue: #2980b9;
+    --purple: #8e44ad;
+    --text: #e0e0e0;
+    --muted: #7a7a9a;
+    --border: #1e3a6a;
+  }
+
+  body {
+    font-family: 'Segoe UI', Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    font-size: 14px;
+  }
+
+  header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 20px;
+    background: var(--bg2);
+    border-bottom: 2px solid var(--accent);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .logo { font-size: 1.2rem; font-weight: bold; color: var(--accent); white-space: nowrap; }
+
+  #playersTop {
+    flex: 1;
+    text-align: center;
+    font-size: 0.8rem;
+    color: var(--muted);
+    padding: 0 10px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  #topBtns { display: flex; gap: 6px; flex-shrink: 0; }
+
+  button {
+    padding: 7px 13px;
+    border: none;
+    border-radius: 7px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    font-family: inherit;
+    font-weight: 600;
+    transition: filter 0.15s, transform 0.1s;
+    white-space: nowrap;
+  }
+  button:hover  { filter: brightness(1.15); }
+  button:active { transform: scale(0.97); }
+  button:disabled { opacity: 0.4; cursor: not-allowed; filter: none; }
+
+  .btn-primary   { background: var(--accent);  color: #fff; }
+  .btn-secondary { background: var(--bg3);     color: var(--text); border: 1px solid var(--border); }
+  .btn-success   { background: var(--green);   color: #fff; }
+  .btn-warning   { background: var(--accent2); color: #fff; }
+  .btn-danger    { background: #c0392b;        color: #fff; }
+  .btn-info      { background: var(--blue);    color: #fff; }
+  .btn-purple    { background: var(--purple);  color: #fff; }
+  .btn-sm        { padding: 5px 10px; font-size: 0.78rem; }
+  .btn-kick      { background: #7b1010; color: #ffaaaa; border: 1px solid #c0392b; }
+  .btn-dm        { background: #5a3200; color: #ffd580; border: 1px solid var(--accent2); }
+
+  .hidden { display: none !important; }
+
+  /* ── SETUP ── */
+  #setup {
+    max-width: 480px;
+    margin: 50px auto;
+    padding: 28px;
+    background: var(--bg2);
+    border-radius: 16px;
+    border: 1px solid var(--border);
+  }
+  #setup h2 { text-align: center; color: var(--accent); margin-bottom: 22px; font-size: 1.5rem; }
+
+  .form-group { margin-bottom: 14px; }
+  .form-group label { display: block; margin-bottom: 5px; color: var(--muted); font-size: 0.82rem; }
+  .form-group input {
+    width: 100%;
+    padding: 9px 13px;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    color: var(--text);
+    font-size: 0.95rem;
+    outline: none;
+    font-family: inherit;
+    transition: border-color 0.2s;
+  }
+  .form-group input:focus { border-color: var(--accent); }
+  .hint { font-size: 0.75rem; color: var(--muted); margin-top: 4px; }
+
+  .setup-actions { display: flex; gap: 8px; margin-top: 18px; }
+  .setup-actions button { flex: 1; padding: 11px; font-size: 0.95rem; }
+
+  #createRoomSection {
+    margin-top: 14px;
+    padding: 14px;
+    background: var(--bg3);
+    border-radius: 10px;
+    border: 1px solid var(--border);
+  }
+
+  .divider {
+    text-align: center;
+    margin: 18px 0;
+    color: var(--muted);
+    font-size: 0.8rem;
+    position: relative;
+  }
+  .divider::before, .divider::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    width: 38%;
+    height: 1px;
+    background: var(--border);
+  }
+  .divider::before { left: 0; }
+  .divider::after  { right: 0; }
+
+  /* ── LOBBY ── */
+  .room-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 14px;
+    background: var(--bg3);
+    border-radius: 9px;
+    margin-bottom: 7px;
+    border: 1px solid var(--border);
+  }
+  .room-name   { font-weight: bold; }
+  .room-meta   { font-size: 0.75rem; color: var(--muted); margin-top: 2px; }
+  .room-locked { font-size: 0.75rem; color: var(--accent2); margin-top: 2px; }
+  .room-btns   { display: flex; gap: 6px; flex-shrink: 0; }
+
+  /* ── APP ── */
+  #app { padding: 16px 20px; max-width: 1300px; margin: 0 auto; }
+
+  #roomTitle {
+    text-align: center;
+    font-size: 1.2rem;
+    color: var(--accent);
+    margin-bottom: 16px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  /* ── DM LAYOUT ── */
+  .dm-layout {
+    display: grid;
+    grid-template-columns: 1fr 340px;
+    gap: 16px;
+    align-items: start;
+  }
+  @media (max-width: 800px) { .dm-layout { grid-template-columns: 1fr; } }
+
+  /* ── CARDS ── */
+  .card {
+    background: var(--bg2);
+    border-radius: 12px;
+    padding: 14px;
+    border: 1px solid var(--border);
+    margin-bottom: 14px;
+  }
+  .card h3 {
+    color: var(--accent);
+    font-size: 0.82rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 10px;
+    padding-bottom: 7px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  /* ── SEVERITY ── */
+  .sev-row { display: flex; gap: 7px; flex-wrap: wrap; }
+  .sev-btn {
+    flex: 1;
+    min-width: 70px;
+    text-align: center;
+    padding: 9px 8px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: bold;
+    font-size: 0.85rem;
+    border: 2px solid transparent;
+    transition: all 0.18s;
+    user-select: none;
+    color: #fff;
+    background: var(--sev-bg, #444);
+  }
+  .sev-btn:hover  { filter: brightness(1.2); }
+  .sev-btn.active {
+    border-color: #fff;
+    transform: scale(1.06);
+    box-shadow: 0 0 10px rgba(255,255,255,0.25);
+  }
+
+  /* ── GENERATOR ── */
+  .cat-block { margin-bottom: 20px; }
+
+  /* ── MAIN CATEGORY HEADINGS: Útok / Obrana / Skilly ── */
+  .cat-title {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: #ffffff;
+    margin-top: 4px;
+    margin-bottom: 12px;
+    padding-bottom: 6px;
+    border-bottom: 2px solid var(--border);
+    letter-spacing: 0.3px;
+  }
+
+  .btn-group { display: flex; flex-wrap: wrap; gap: 5px; }
+
+  /* ── ATTRIBUTE SUBHEADINGS ── */
+  .attr-label {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    margin: 14px 0 6px;
+    padding-bottom: 4px;
+    font-size: 0.88rem;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+    text-transform: uppercase;
+    color: #c8c8e8;
+    border-bottom: 1px solid currentColor;
+    opacity: 0.85;
+  }
+  .attr-label::before {
+    content: '';
+    display: inline-block;
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: currentColor;
+    flex-shrink: 0;
+  }
+  .attr-sila,        .attr-strength     { color: #e05555; }
+  .attr-obratnost,   .attr-dexterity    { color: #55c77a; }
+  .attr-odolnost,    .attr-constitution { color: #e8934a; }
+  .attr-inteligence, .attr-intelligence { color: #5b9de8; }
+  .attr-moudrost,    .attr-wisdom       { color: #a78bfa; }
+  .attr-charisma                         { color: #f472b6; }
+  .attr-vnimania,    .attr-perception   { color: #fbbf24; }
+
+  /* ── RIGHT COLUMN ── */
+  .right-col { display: flex; flex-direction: column; }
+
+  /* ── PLAYER CHIP ── */
+  .player-chip {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 7px 10px;
+    background: var(--bg3);
+    border-radius: 7px;
+    margin-bottom: 5px;
+    font-size: 0.85rem;
+    border: 1px solid var(--border);
+    gap: 8px;
+  }
+  .player-chip-name {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* ── RESULT BOX ── */
+  #resultBox {
+    border: 1px solid var(--accent);
+    border-radius: 12px;
+    overflow: hidden;
+    margin-bottom: 14px;
+    background: var(--bg2);
+  }
+  .res-header {
+    background: var(--accent);
+    padding: 7px 12px;
+    font-size: 0.75rem;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+  .res-body { padding: 12px; }
+
+  .res-effect {
+    background: #200a0a;
+    border-left: 3px solid var(--accent);
+    padding: 9px 12px;
+    border-radius: 0 7px 7px 0;
+    color: #ff9090;
+    font-weight: bold;
+    font-size: 0.9rem;
+    margin-bottom: 10px;
+    line-height: 1.4;
+  }
+  .res-rp {
+    background: #0a180a;
+    border-left: 3px solid var(--green);
+    padding: 8px 12px;
+    border-radius: 0 7px 7px 0;
+    color: #90e890;
+    font-size: 0.85rem;
+    line-height: 1.45;
+    margin-bottom: 7px;
+  }
+  .res-rp:last-child { margin-bottom: 0; }
+  .rp-label {
+    font-size: 0.7rem;
+    color: var(--green);
+    font-weight: bold;
+    margin-bottom: 3px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  /* ── NO-RESULT / error state ── */
+  .res-missing {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: #1c1208;
+    border: 1px dashed var(--accent2);
+    border-radius: 8px;
+    padding: 14px 16px;
+    color: var(--accent2);
+    font-size: 0.9rem;
+    font-weight: 600;
+    line-height: 1.45;
+  }
+  .res-missing .res-missing-icon { font-size: 1.4rem; flex-shrink: 0; }
+  .res-missing .res-missing-detail {
+    font-size: 0.78rem;
+    color: var(--muted);
+    font-weight: 400;
+    margin-top: 3px;
+  }
+
+  /* ── TARGETS ── */
+  .target-row {
+    padding: 10px;
+    background: var(--bg3);
+    border-radius: 9px;
+    margin-bottom: 7px;
+    border: 1px solid var(--border);
+  }
+  .target-name { font-weight: bold; font-size: 0.85rem; margin-bottom: 7px; }
+  .target-btns { display: flex; gap: 5px; flex-wrap: wrap; }
+
+  /* ── PLAYER PANEL ── */
+  .player-layout {
+    display: grid;
+    grid-template-columns: 1fr 280px;
+    gap: 16px;
+    align-items: start;
+  }
+  @media (max-width: 700px) { .player-layout { grid-template-columns: 1fr; } }
+
+  .msg-effect {
+    background: #200a0a;
+    border-left: 3px solid var(--accent);
+    padding: 10px 13px;
+    border-radius: 0 7px 7px 0;
+    color: #ff9090;
+    font-weight: bold;
+    font-size: 0.92rem;
+    margin-bottom: 10px;
+    line-height: 1.45;
+  }
+  .msg-rp {
+    background: #0a180a;
+    border-left: 3px solid var(--green);
+    padding: 10px 13px;
+    border-radius: 0 7px 7px 0;
+    color: #90e890;
+    font-size: 0.9rem;
+    line-height: 1.5;
+  }
+  .msg-kicked {
+    background: #200a0a;
+    border: 1px solid var(--accent);
+    border-radius: 9px;
+    padding: 18px;
+    text-align: center;
+    color: #ff9090;
+    font-weight: bold;
+    font-size: 1rem;
+  }
+  .waiting-text {
+    text-align: center;
+    color: var(--muted);
+    padding: 30px 10px;
+    font-size: 0.9rem;
+  }
+
+  /* ── NOTIFICATION ── */
+  #notif {
+    position: fixed;
+    bottom: 18px;
+    right: 18px;
+    background: var(--accent);
+    color: #fff;
+    padding: 10px 18px;
+    border-radius: 9px;
+    font-weight: bold;
+    font-size: 0.88rem;
+    z-index: 9999;
+    opacity: 0;
+    transform: translateY(10px);
+    transition: opacity 0.3s, transform 0.3s;
+    pointer-events: none;
+    max-width: 300px;
+  }
+  #notif.show { opacity: 1; transform: translateY(0); }
+
+  /* ── LOADING ── */
+  #loading { text-align: center; padding: 80px 20px; color: var(--muted); }
+  .spin {
+    display: inline-block;
+    width: 36px; height: 36px;
+    border: 3px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    margin-bottom: 14px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .empty-note { color: var(--muted); font-size: 0.82rem; font-style: italic; }
+
+  #currentSev {
+    font-size: 0.78rem;
+    color: var(--muted);
+    margin-top: 8px;
+    text-align: center;
+  }
+  #currentSev span { color: var(--accent2); font-weight: bold; }
+  .preserve-lines { white-space: pre-wrap; overflow-wrap: anywhere; }
+  .res-effect { white-space: pre-wrap; overflow-wrap: anywhere; }
+  .result-context { color: var(--muted); font-size: 0.8rem; margin-bottom: 10px; }
+  .history-item { display: block; width: 100%; text-align: left; white-space: normal; margin-bottom: 5px; }
+  .sev-btn { font-family: inherit; }
+  .sev-btn:disabled { transform: none; }
+  .overlay-settings summary { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; cursor: pointer; color: var(--accent); font-weight: 700; }
+  .overlay-settings summary::before { content: '▸'; }
+  .overlay-settings[open] summary::before { content: '▾'; }
+  #overlayThemeLabel { margin-left: auto; color: var(--text); font-size: .8rem; font-weight: 400; }
+  .overlay-theme-options { display: grid; grid-template-columns: repeat(auto-fit, minmax(155px, 1fr)); gap: 8px; margin: 14px 0; }
+  .overlay-theme-option { display: flex; align-items: center; gap: 9px; min-width: 0; padding: 9px; background: var(--bg); color: var(--text); border: 2px solid var(--border); text-align: left; white-space: normal; }
+  .overlay-theme-option.selected { border-color: var(--accent2); background: var(--bg3); }
+  .overlay-theme-option:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
+  .overlay-theme-swatch { flex: 0 0 25px; width: 25px; height: 25px; border: 3px solid; border-radius: 5px; }
+  .overlay-preview { display: block; width: 100%; aspect-ratio: 16 / 9; border: 1px solid var(--border); border-radius: 7px; margin-top: 10px; background: #181315; pointer-events: none; }
+  .overlay-settings .hint { line-height: 1.5; }
+</style>
+<link rel="icon" type="image/png" href="crit.png">
+</head>
+<body>
+<div style="background:#573700;color:#ffe2a1;padding:5px 20px;font-size:12px;text-align:center">TESTOVACÍ VERZE · Oddělené účty a data</div>
+
+<header>
+  <div class="logo">🎲 KritFailer · BETA</div><a href="index.html" style="color:#e9a020">← Kampaně</a>
+  <div id="playersTop"></div>
+  <div id="topBtns"></div>
+</header>
+
+<div id="notif"></div>
+
+<div id="loading">
+  <div class="spin"></div>
+  <div>Načítám data…</div>
+</div>
+
+<!-- SETUP -->
+<div id="setup" class="hidden">
+  <h2>🎲 KritFailer</h2>
+  <div class="form-group">
+    <label>Tvoje jméno</label>
+    <input id="nameInput" placeholder="Zadej jméno…" maxlength="30">
+  </div>
+  <div class="setup-actions">
+    <button class="btn-primary" onclick="toggleCreate()">👑 Vytvořit místnost</button>
+  </div>
+  <div id="createRoomSection" class="hidden">
+    <div class="form-group" style="margin-top:10px;">
+      <label>Název místnosti</label>
+      <input id="roomInput" placeholder="Název místnosti…" maxlength="30">
+    </div>
+    <div class="form-group">
+      <label>Heslo <span style="color:var(--muted)">(volitelné)</span></label>
+      <input id="passwordInput" type="password" placeholder="Nechte prázdné pro veřejnou místnost…">
+      <div class="hint">Hráči budou muset zadat heslo při vstupu.</div>
+    </div>
+    <button class="btn-success" onclick="createRoom()"
+      style="width:100%;padding:10px;margin-top:4px;">✅ Vytvořit</button>
+  </div>
+  <div class="divider">nebo se připoj k existující místnosti</div>
+  <div id="lobbyList">
+    <div class="empty-note" style="text-align:center;padding:16px;">Žádné místnosti…</div>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="app" class="hidden">
+  <h2 id="roomTitle"></h2>
+
+  <!-- DM PANEL -->
+  <div id="dmPanel" class="hidden">
+    <div class="dm-layout">
+      <div id="dmLeft">
+        <div class="card">
+          <h3>🎯 Obtížnost pro místnost</h3>
+          <div class="sev-row" id="severityBtns"></div>
+          <div id="currentSev">Pro všechny hráče: <span id="sevLabel">Vyber obtížnost</span></div>
+        </div>
+        <details class="card overlay-settings" id="overlaySettings">
+          <summary>📺 Vzhled overlaye <span id="overlayThemeLabel">Grimoár</span></summary>
+          <div class="overlay-theme-options" id="overlayThemeOptions" role="group" aria-label="Vyber vzhled overlaye"></div>
+          <div class="hint">Vybraný vzhled platí pro celou místnost. Otevřený overlay na televizi se přepne automaticky.</div>
+          <iframe class="overlay-preview" id="overlayPreview" title="Ukázka vybraného vzhledu overlaye" tabindex="-1"></iframe>
+          <div class="hint">Ukázkový výsledek · přes celou obrazovku · 20 sekund</div>
+        </details>
+        <div class="card">
+          <h3>🎲 Generátor</h3>
+          <div class="hint">Výsledek nejprve uvidíš jen ty. Potom ho můžeš poslat vybranému hráči.</div>
+          <div id="generator"></div>
+        </div>
+      </div>
+
+      <div class="right-col">
+        <div class="card">
+          <h3>👥 Hráči v místnosti</h3>
+          <div id="dmPlayerList"><div class="empty-note">Žádní hráči</div></div>
+        </div>
+
+        <div id="resultBox" class="hidden">
+          <div class="res-header" id="resHeader">🎲 Výsledek</div>
+          <div class="res-body" id="resBody"></div>
+        </div>
+
+        <div class="card">
+          <h3>📨 Pošli hráči</h3>
+          <div id="targets"><div class="empty-note">Nejprve vygeneruj výsledek</div></div>
+        </div>
+        <div class="card">
+          <h3>📋 Poslední výsledky</h3>
+          <div id="dmHistory"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PLAYER PANEL -->
+  <div id="playerPanel" class="hidden">
+    <div class="player-layout">
+      <div>
+        <div class="card">
+          <h3>📬 Tvůj výsledek</h3>
+          <div id="playerResult">
+            <div class="waiting-text">⏳ Čekám na výsledek od DM…</div>
+          </div>
+        </div>
+        <div class="card">
+          <h3>🎲 Kde ti padl critfail?</h3>
+          <div class="hint" id="playerRollHint">Čekám, až DM připraví generování.</div>
+          <div id="playerGenerator" style="margin-top:16px;"></div>
+        </div>
+      </div>
+      <div>
+        <div class="card">
+          <h3>👥 Hráči v místnosti</h3>
+          <div id="playerListPlayer"><div class="empty-note">Načítám…</div></div>
+        </div>
+        <div class="card">
+          <h3>📋 Tvoje poslední výsledky</h3>
+          <div id="playerHistory"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script type="module" src="app.js?v=overlay-themes-1"></script>
+</body>
+</html>
